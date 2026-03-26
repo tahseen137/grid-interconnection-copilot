@@ -19,6 +19,7 @@ const runAnalysisButton = document.querySelector("#run-analysis");
 const deleteProjectButton = document.querySelector("#delete-project");
 const refreshWorkspaceButton = document.querySelector("#refresh-workspace");
 const loadDemoButton = document.querySelector("#load-demo");
+const logoutButton = document.querySelector("#logout");
 
 const state = {
   projectSummaries: [],
@@ -34,6 +35,11 @@ async function apiRequest(url, options = {}) {
     },
     ...options,
   });
+
+  if (response.status === 401) {
+    window.location.assign("/login?next=%2F");
+    throw new Error("Authentication required");
+  }
 
   if (response.status === 204) {
     return null;
@@ -77,7 +83,7 @@ function renderProjects() {
           <span class="pill">${project.status}</span>
           <strong>${project.name}</strong>
           <span class="muted-text">${project.developer}</span>
-          <span class="muted-text">${project.site_count} site(s) · COD ${project.target_cod_year}</span>
+          <span class="muted-text">${project.site_count} site(s) - COD ${project.target_cod_year}</span>
           <span class="muted-text">Last analysis: ${formatDate(project.latest_analysis_at)}</span>
         </button>
       `
@@ -123,7 +129,7 @@ function renderSelectedProject() {
   const resultLookup = new Map((latestAnalysis?.results || []).map((result) => [result.site_id, result]));
 
   projectName.textContent = project.name;
-  projectSubtitle.textContent = `${project.developer} · ${project.technology_focus.replaceAll("_", " ")} focus`;
+  projectSubtitle.textContent = `${project.developer} - ${project.technology_focus.replaceAll("_", " ")} focus`;
   projectNotes.textContent = project.notes || "No project notes captured yet.";
   metricSites.textContent = String(project.sites.length);
   metricStatus.textContent = project.status;
@@ -146,11 +152,11 @@ function renderSelectedProject() {
             <div class="site-result-header">
               <div>
                 <strong>${site.name}</strong>
-                <p class="muted-text">${site.region} · ${site.state} · ${site.technology.replaceAll("_", " ")}</p>
+                <p class="muted-text">${site.region} - ${site.state} - ${site.technology.replaceAll("_", " ")}</p>
               </div>
               <button class="ghost danger small" data-delete-site="${site.id}">Delete</button>
             </div>
-            <p class="muted-text">Queue: ${site.queue_wait_months} months · Upgrade cost: $${site.estimated_upgrade_cost_musd}M · Substation distance: ${site.distance_to_substation_km} km</p>
+            <p class="muted-text">Queue: ${site.queue_wait_months} months - Upgrade cost: $${site.estimated_upgrade_cost_musd}M - Substation distance: ${site.distance_to_substation_km} km</p>
             ${
               result
                 ? `<div class="result-chip-row">
@@ -196,7 +202,7 @@ function renderSelectedProject() {
             <article class="analysis-rank-card">
               <span class="pill">Rank ${result.rank}</span>
               <strong>${result.site_name}</strong>
-              <p class="muted-text">Score ${result.overall_score} · ${result.readiness_tier}</p>
+              <p class="muted-text">Score ${result.overall_score} - ${result.readiness_tier}</p>
               <p class="muted-text">${result.next_actions[0] || "Advance into deeper diligence."}</p>
             </article>
           `
@@ -426,6 +432,17 @@ loadDemoButton.addEventListener("click", async () => {
     setStatus(error.message, "error");
   }
 });
+
+if (logoutButton) {
+  logoutButton.addEventListener("click", async () => {
+    try {
+      await apiRequest("/api/session/logout", { method: "POST" });
+      window.location.assign("/login");
+    } catch (error) {
+      setStatus(error.message, "error");
+    }
+  });
+}
 
 async function bootstrap() {
   try {

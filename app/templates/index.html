@@ -108,6 +108,9 @@
                 </p>
               </div>
               <div class="project-actions">
+                <button id="export-project" class="ghost" disabled>Export project JSON</button>
+                <button id="download-rankings" class="ghost" disabled>Download rankings CSV</button>
+                <button id="download-memo" class="ghost" disabled>Download memo</button>
                 <button id="run-analysis" class="primary" disabled>Run portfolio analysis</button>
                 <button id="delete-project" class="ghost danger" disabled>Delete project</button>
               </div>
@@ -243,6 +246,26 @@
                 </label>
                 <button type="submit" class="primary full-width" disabled>Add site</button>
               </form>
+
+              <div class="divider"></div>
+
+              <div class="stack">
+                <div class="section-header compact">
+                  <div>
+                    <p class="eyebrow">Bulk intake</p>
+                    <h3>Import sites from CSV</h3>
+                  </div>
+                  <button id="download-template" class="ghost small" type="button">Download template</button>
+                </div>
+                <label>
+                  CSV file
+                  <input id="site-import-file" type="file" accept=".csv,text/csv" />
+                </label>
+                <button id="import-sites" class="ghost full-width" type="button" disabled>Import CSV</button>
+                <p class="muted-text">
+                  Use the template to bulk load site pipelines from spreadsheets without re-entering every screening field by hand.
+                </p>
+              </div>
             </div>
 
             <div class="panel">

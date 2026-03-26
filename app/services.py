@@ -66,7 +66,21 @@ def list_project_sites(project: Project) -> list[Site]:
     return sorted(project.sites, key=lambda site: site.created_at)
 
 
+def _normalized_site_name(name: str) -> str:
+    return name.strip().casefold()
+
+
+def _ensure_unique_site_name(project: Project, name: str, exclude_site_id: str | None = None) -> None:
+    candidate = _normalized_site_name(name)
+    for existing_site in project.sites:
+        if exclude_site_id and existing_site.id == exclude_site_id:
+            continue
+        if _normalized_site_name(existing_site.name) == candidate:
+            raise ValueError("Site names must be unique within a project")
+
+
 def add_site_to_project(session: Session, project: Project, payload: SiteCreate) -> Site:
+    _ensure_unique_site_name(project, payload.name)
     site = Site(**payload.model_dump())
     project.sites.append(site)
     session.add(site)
@@ -75,11 +89,34 @@ def add_site_to_project(session: Session, project: Project, payload: SiteCreate)
     return site
 
 
+def add_sites_to_project(session: Session, project: Project, payloads: list[SiteCreate]) -> list[Site]:
+    seen_names = {_normalized_site_name(site.name) for site in project.sites}
+    for payload in payloads:
+        normalized_name = _normalized_site_name(payload.name)
+        if normalized_name in seen_names:
+            raise ValueError("Site names must be unique within a project")
+        seen_names.add(normalized_name)
+
+    created_sites: list[Site] = []
+    for payload in payloads:
+        site = Site(**payload.model_dump())
+        project.sites.append(site)
+        session.add(site)
+        created_sites.append(site)
+
+    session.commit()
+    for site in created_sites:
+        session.refresh(site)
+    return created_sites
+
+
 def get_site(project: Project, site_id: str) -> Site | None:
     return next((site for site in project.sites if site.id == site_id), None)
 
 
 def update_site(session: Session, site: Site, payload: SiteUpdate) -> Site:
+    if payload.name is not None:
+        _ensure_unique_site_name(site.project, payload.name, exclude_site_id=site.id)
     for key, value in payload.model_dump(exclude_unset=True).items():
         setattr(site, key, value)
     session.add(site)

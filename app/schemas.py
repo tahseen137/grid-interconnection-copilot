@@ -190,6 +190,18 @@ class SessionStatusResponse(BaseModel):
     next_path: str | None = None
 
 
+class SiteBulkImportRequest(BaseModel):
+    csv_content: str = Field(..., min_length=1, max_length=500_000)
+
+
+class SiteBulkImportResponse(BaseModel):
+    created_count: int
+    skipped_blank_rows: int
+    error_count: int
+    errors: list[str]
+    sites: list[SiteRead]
+
+
 class ComparisonRequest(BaseModel):
     portfolio_name: str = Field(..., min_length=3, max_length=120)
     sites: list[SiteInput] = Field(..., min_length=2, max_length=10)

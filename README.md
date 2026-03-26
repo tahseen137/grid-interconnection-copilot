@@ -1,12 +1,14 @@
 # Grid Interconnection & Energy Siting Copilot
 
-Grid Interconnection & Energy Siting Copilot is a production-ready pilot for screening renewable energy project sites before teams spend money on deeper diligence. It scores sites against interconnection, permitting, community, and execution heuristics, ranks a portfolio, and generates an investment-style readiness memo.
+Grid Interconnection & Energy Siting Copilot is a production-ready internal product for screening renewable energy project sites before teams spend money on deeper diligence. It scores sites against interconnection, permitting, community, and execution heuristics, ranks a portfolio, generates an investment-style readiness memo, and now includes team access controls plus an auditable activity feed.
 
 ## What it does
 
 - Scores candidate sites across five major ISO regions.
 - Stores persistent projects, sites, and analysis runs.
-- Protects the workspace with a shared pilot password and signed session cookies.
+- Protects the workspace with account-based login, signed session cookies, CSRF protection, and role-based access.
+- Gives admins in-app user management for analysts, viewers, and additional admins.
+- Captures an audit trail for logins, project changes, site changes, user changes, and analysis runs.
 - Imports candidate sites from CSV for spreadsheet-based analyst teams.
 - Exports project snapshots, ranked analysis CSVs, and memo markdown for investment reviews.
 - Ships with automated unit, integration, and migration checks.
@@ -51,6 +53,10 @@ Open [http://127.0.0.1:8000](http://127.0.0.1:8000).
 - `GET /ready`
 - `GET /api/session`
 - `POST /api/session/login`
+- `GET /api/activity`
+- `GET /api/admin/users`
+- `POST /api/admin/users`
+- `PATCH /api/admin/users/{user_id}`
 - `GET /api/reference/regions`
 - `GET /api/reference/site-template.csv`
 - `POST /api/projects`
@@ -63,7 +69,8 @@ Open [http://127.0.0.1:8000](http://127.0.0.1:8000).
 ## Production notes
 
 - Use `DATABASE_URL` for Postgres in shared environments.
-- Set `APP_ACCESS_PASSWORD` and `SESSION_SECRET` before giving users access.
+- Set `BOOTSTRAP_ADMIN_USERNAME`, `BOOTSTRAP_ADMIN_PASSWORD`, and `SESSION_SECRET` before giving users access.
+- `APP_ACCESS_PASSWORD` remains available only as a legacy migration fallback for older pilot deployments.
 - Keep `AUTO_CREATE_SCHEMA=false` in production and let Alembic own schema changes.
 - Render deployment uses `start.sh`, which runs `alembic upgrade head` before starting Uvicorn.
 - See [docs/launch-readiness.md](/Users/ring_/OneDrive/Documents/Playground/grid-interconnection-copilot/docs/launch-readiness.md) for the launch checklist.
@@ -80,6 +87,9 @@ Open [http://127.0.0.1:8000](http://127.0.0.1:8000).
 - `codex/feature-security-and-ops`
 - `codex/feature-bulk-intake-and-export`
 - `codex/feature-migrations-and-launch-readiness`
+- `codex/feature-rbac-auth-and-csrf`
+- `codex/feature-admin-activity`
+- `codex/feature-production-ops`
 - `codex/production-hardening`
 
 Each major feature was developed on its own branch and merged into the integration branch before promotion to `main`.

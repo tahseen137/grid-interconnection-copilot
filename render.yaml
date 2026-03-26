@@ -18,10 +18,12 @@ services:
         fromDatabase:
           name: grid-interconnection-copilot-db
           property: connectionString
+      - key: BOOTSTRAP_ADMIN_USERNAME
+        value: admin
+      - key: BOOTSTRAP_ADMIN_PASSWORD
+        sync: false
       - key: SESSION_SECRET
         generateValue: true
-      - key: APP_ACCESS_PASSWORD
-        sync: false
       - key: TRUSTED_HOSTS
         value: "*.onrender.com,localhost,127.0.0.1"
       - key: ENFORCE_HTTPS

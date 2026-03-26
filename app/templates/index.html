@@ -14,159 +14,310 @@
   </head>
   <body>
     <main class="shell">
-      <section class="hero">
-        <div class="hero-copy">
-          <p class="eyebrow">MVP Dashboard</p>
-          <h1>Pick the sites that deserve real diligence dollars.</h1>
+      <section class="hero panel">
+        <div>
+          <p class="eyebrow">Production Candidate Workspace</p>
+          <h1>Screen, save, and rank renewable development opportunities.</h1>
           <p class="lede">
-            Screen renewable project sites against interconnection, permitting, community,
-            and development-readiness factors. Compare options and export a first-pass memo.
+            Build persistent project portfolios, attach candidate sites, run interconnection
+            analysis, and hand investors a memo they can review immediately.
           </p>
-          <div class="hero-actions">
-            <button id="load-sample" class="ghost">Load sample sites</button>
-            <button id="generate-memo" class="primary">Generate memo</button>
-          </div>
         </div>
-        <div class="hero-card">
-          <p class="card-label">Best use</p>
-          <strong>Early-stage solar and storage siting in ERCOT, MISO, PJM, CAISO, and SPP</strong>
-          <ul>
-            <li>Score candidate sites</li>
-            <li>Rank a portfolio</li>
-            <li>Flag gating risks</li>
-          </ul>
+        <div class="hero-actions">
+          <button id="load-demo" class="ghost">Load demo project</button>
+          <button id="refresh-workspace" class="primary">Refresh workspace</button>
+          {% if auth_enabled %}
+          <button id="logout" class="ghost danger">Log out</button>
+          {% endif %}
+          <div class="hero-status">
+            <span class="pill">Render live</span>
+            <span class="muted-text">Saved projects and analysis runs are now persistent.</span>
+          </div>
         </div>
       </section>
 
-      <section class="workspace">
-        <div class="workspace-header">
+      <section class="layout">
+        <aside class="sidebar panel">
+          <div class="section-header">
+            <div>
+              <p class="eyebrow">Projects</p>
+              <h2>Portfolio workspace</h2>
+            </div>
+          </div>
+          <div id="project-list" class="project-list empty-state">No projects yet.</div>
+
+          <div class="divider"></div>
+
+          <form id="project-form" class="stack">
+            <div class="section-header compact">
+              <div>
+                <p class="eyebrow">Create</p>
+                <h3>New project</h3>
+              </div>
+            </div>
+            <label>
+              Project name
+              <input name="name" type="text" required minlength="3" maxlength="120" />
+            </label>
+            <label>
+              Developer
+              <input name="developer" type="text" required minlength="2" maxlength="120" />
+            </label>
+            <div class="field-row">
+              <label>
+                Target COD
+                <input name="target_cod_year" type="number" min="2026" max="2045" value="2029" />
+              </label>
+              <label>
+                Status
+                <select name="status">
+                  <option value="screening">Screening</option>
+                  <option value="draft">Draft</option>
+                  <option value="ready">Ready</option>
+                  <option value="archived">Archived</option>
+                </select>
+              </label>
+            </div>
+            <label>
+              Technology focus
+              <select name="technology_focus">
+                <option value="solar_storage">Solar + Storage</option>
+                <option value="solar">Solar</option>
+                <option value="storage">Storage</option>
+                <option value="wind">Wind</option>
+              </select>
+            </label>
+            <label>
+              Notes
+              <textarea name="notes" rows="4" maxlength="4000"></textarea>
+            </label>
+            <button type="submit" class="primary full-width">Create project</button>
+          </form>
+        </aside>
+
+        <section class="workspace">
+          <div id="status-banner" class="status-banner muted-text">Loading projects...</div>
+
+          <div class="panel project-panel">
+            <div class="project-header">
+              <div>
+                <p class="eyebrow">Selected project</p>
+                <h2 id="project-name">No project selected</h2>
+                <p id="project-subtitle" class="muted-text">
+                  Create a project or load the demo data to start screening sites.
+                </p>
+              </div>
+              <div class="project-actions">
+                <button id="export-project" class="ghost" disabled>Export project JSON</button>
+                <button id="download-rankings" class="ghost" disabled>Download rankings CSV</button>
+                <button id="download-memo" class="ghost" disabled>Download memo</button>
+                <button id="run-analysis" class="primary" disabled>Run portfolio analysis</button>
+                <button id="delete-project" class="ghost danger" disabled>Delete project</button>
+              </div>
+            </div>
+
+            <div id="project-metrics" class="metric-grid">
+              <article class="metric-card">
+                <span class="metric-label">Sites</span>
+                <strong id="metric-sites">0</strong>
+              </article>
+              <article class="metric-card">
+                <span class="metric-label">Status</span>
+                <strong id="metric-status">Draft</strong>
+              </article>
+              <article class="metric-card">
+                <span class="metric-label">Target COD</span>
+                <strong id="metric-cod">-</strong>
+              </article>
+              <article class="metric-card">
+                <span class="metric-label">Top pick</span>
+                <strong id="metric-top-pick">-</strong>
+              </article>
+            </div>
+
+            <div id="project-notes" class="project-notes muted-text">
+              Project notes will appear here.
+            </div>
+          </div>
+
+          <div class="workspace-grid">
+            <div class="panel">
+              <div class="section-header compact">
+                <div>
+                  <p class="eyebrow">Sites</p>
+                  <h3>Add candidate site</h3>
+                </div>
+              </div>
+              <form id="site-form" class="stack disabled-stack">
+                <label>
+                  Site name
+                  <input name="name" type="text" required minlength="2" maxlength="100" />
+                </label>
+                <div class="field-row">
+                  <label>
+                    Region
+                    <select name="region">
+                      <option value="ERCOT">ERCOT</option>
+                      <option value="MISO">MISO</option>
+                      <option value="PJM">PJM</option>
+                      <option value="CAISO">CAISO</option>
+                      <option value="SPP">SPP</option>
+                    </select>
+                  </label>
+                  <label>
+                    State
+                    <input name="state" type="text" maxlength="2" value="TX" />
+                  </label>
+                </div>
+                <div class="field-row">
+                  <label>
+                    Technology
+                    <select name="technology">
+                      <option value="solar_storage">Solar + Storage</option>
+                      <option value="solar">Solar</option>
+                      <option value="storage">Storage</option>
+                      <option value="wind">Wind</option>
+                    </select>
+                  </label>
+                  <label>
+                    Acreage
+                    <input name="acreage" type="number" min="1" value="550" />
+                  </label>
+                </div>
+                <div class="field-row">
+                  <label>
+                    Distance to substation (km)
+                    <input name="distance_to_substation_km" type="number" step="0.1" value="3.0" />
+                  </label>
+                  <label>
+                    Queue wait (months)
+                    <input name="queue_wait_months" type="number" min="0" value="18" />
+                  </label>
+                </div>
+                <div class="field-row">
+                  <label>
+                    Upgrade cost ($M)
+                    <input name="estimated_upgrade_cost_musd" type="number" step="0.1" value="12.0" />
+                  </label>
+                  <label>
+                    Voltage (kV)
+                    <input name="transmission_voltage_kv" type="number" min="0" value="138" />
+                  </label>
+                </div>
+                <div class="field-row">
+                  <label>
+                    Environmental sensitivity
+                    <input name="environmental_sensitivity" type="number" min="0" max="100" value="20" />
+                  </label>
+                  <label>
+                    Community support
+                    <input name="community_support" type="number" min="0" max="100" value="75" />
+                  </label>
+                </div>
+                <div class="field-row">
+                  <label>
+                    Permitting complexity
+                    <select name="permitting_complexity">
+                      <option value="low">Low</option>
+                      <option value="medium">Medium</option>
+                      <option value="high">High</option>
+                    </select>
+                  </label>
+                  <label>
+                    Site control
+                    <select name="site_control">
+                      <option value="secured">Secured</option>
+                      <option value="optioned">Optioned</option>
+                      <option value="none">None</option>
+                    </select>
+                  </label>
+                </div>
+                <label>
+                  Land use conflict
+                  <select name="land_use_conflict">
+                    <option value="low">Low</option>
+                    <option value="medium">Medium</option>
+                    <option value="high">High</option>
+                  </select>
+                </label>
+                <label>
+                  Notes
+                  <textarea name="notes" rows="3" maxlength="2000"></textarea>
+                </label>
+                <button type="submit" class="primary full-width" disabled>Add site</button>
+              </form>
+
+              <div class="divider"></div>
+
+              <div class="stack">
+                <div class="section-header compact">
+                  <div>
+                    <p class="eyebrow">Bulk intake</p>
+                    <h3>Import sites from CSV</h3>
+                  </div>
+                  <button id="download-template" class="ghost small" type="button">Download template</button>
+                </div>
+                <label>
+                  CSV file
+                  <input id="site-import-file" type="file" accept=".csv,text/csv" />
+                </label>
+                <button id="import-sites" class="ghost full-width" type="button" disabled>Import CSV</button>
+                <p class="muted-text">
+                  Use the template to bulk load site pipelines from spreadsheets without re-entering every screening field by hand.
+                </p>
+              </div>
+            </div>
+
+            <div class="panel">
+              <div class="section-header compact">
+                <div>
+                  <p class="eyebrow">Portfolio</p>
+                  <h3>Candidate sites</h3>
+                </div>
+              </div>
+              <div id="site-list" class="site-list empty-state">
+                Add a project first, then attach candidate sites here.
+              </div>
+            </div>
+          </div>
+
+          <div class="results-grid">
+            <div class="panel">
+              <div class="section-header compact">
+                <div>
+                  <p class="eyebrow">Analysis</p>
+                  <h3>Latest ranked output</h3>
+                </div>
+              </div>
+              <div id="analysis-output" class="empty-state">
+                Run an analysis after you add sites to generate a ranked portfolio.
+              </div>
+            </div>
+            <div class="panel">
+              <div class="section-header compact">
+                <div>
+                  <p class="eyebrow">Memo</p>
+                  <h3>Investor-ready summary</h3>
+                </div>
+              </div>
+              <pre id="memo-output" class="memo-output">No analysis memo yet.</pre>
+            </div>
+          </div>
+        </section>
+      </section>
+
+      <section class="panel">
+        <div class="section-header">
           <div>
-            <p class="eyebrow">Candidate Sites</p>
-            <h2>Build a screening slate</h2>
-          </div>
-          <button id="add-site" class="ghost">Add site</button>
-        </div>
-
-        <form id="site-form">
-          <div id="site-grid" class="site-grid"></div>
-        </form>
-      </section>
-
-      <section class="results">
-        <div class="panel">
-          <p class="eyebrow">Comparison</p>
-          <h2>Portfolio ranking</h2>
-          <div id="comparison-output" class="empty-state">
-            Submit at least two sites to rank the portfolio.
+            <p class="eyebrow">Regional heuristics</p>
+            <h2>Reference baselines</h2>
           </div>
         </div>
-        <div class="panel">
-          <p class="eyebrow">Memo</p>
-          <h2>Interconnection readiness memo</h2>
-          <pre id="memo-output" class="memo-output">No memo generated yet.</pre>
+        <div id="region-reference" class="region-grid empty-state">
+          Loading regional reference profiles...
         </div>
       </section>
     </main>
-
-    <template id="site-card-template">
-      <article class="site-card">
-        <div class="site-card-header">
-          <h3 class="site-title">Candidate Site</h3>
-          <button type="button" class="remove-site">Remove</button>
-        </div>
-        <label>
-          Site name
-          <input data-field="name" type="text" required />
-        </label>
-        <div class="field-row">
-          <label>
-            Region
-            <select data-field="region">
-              <option value="ERCOT">ERCOT</option>
-              <option value="MISO">MISO</option>
-              <option value="PJM">PJM</option>
-              <option value="CAISO">CAISO</option>
-              <option value="SPP">SPP</option>
-            </select>
-          </label>
-          <label>
-            State
-            <input data-field="state" type="text" maxlength="2" value="TX" />
-          </label>
-        </div>
-        <div class="field-row">
-          <label>
-            Technology
-            <select data-field="technology">
-              <option value="solar_storage">Solar + Storage</option>
-              <option value="solar">Solar</option>
-              <option value="storage">Storage</option>
-              <option value="wind">Wind</option>
-            </select>
-          </label>
-          <label>
-            Acreage
-            <input data-field="acreage" type="number" min="1" value="550" />
-          </label>
-        </div>
-        <div class="field-row">
-          <label>
-            Distance to substation (km)
-            <input data-field="distance_to_substation_km" type="number" step="0.1" value="3.0" />
-          </label>
-          <label>
-            Queue wait (months)
-            <input data-field="queue_wait_months" type="number" min="0" value="18" />
-          </label>
-        </div>
-        <div class="field-row">
-          <label>
-            Upgrade cost ($M)
-            <input data-field="estimated_upgrade_cost_musd" type="number" step="0.1" value="12.0" />
-          </label>
-          <label>
-            Voltage (kV)
-            <input data-field="transmission_voltage_kv" type="number" min="0" value="138" />
-          </label>
-        </div>
-        <div class="field-row">
-          <label>
-            Environmental sensitivity
-            <input data-field="environmental_sensitivity" type="number" min="0" max="100" value="20" />
-          </label>
-          <label>
-            Community support
-            <input data-field="community_support" type="number" min="0" max="100" value="75" />
-          </label>
-        </div>
-        <div class="field-row">
-          <label>
-            Permitting complexity
-            <select data-field="permitting_complexity">
-              <option value="low">Low</option>
-              <option value="medium">Medium</option>
-              <option value="high">High</option>
-            </select>
-          </label>
-          <label>
-            Site control
-            <select data-field="site_control">
-              <option value="secured">Secured</option>
-              <option value="optioned">Optioned</option>
-              <option value="none">None</option>
-            </select>
-          </label>
-        </div>
-        <label>
-          Land use conflict
-          <select data-field="land_use_conflict">
-            <option value="low">Low</option>
-            <option value="medium">Medium</option>
-            <option value="high">High</option>
-          </select>
-        </label>
-      </article>
-    </template>
 
     <script src="/static/app.js"></script>
   </body>

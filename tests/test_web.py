@@ -1,12 +1,11 @@
 from fastapi.testclient import TestClient
 
-from app.main import app
 
-
-def test_index_serves_dashboard() -> None:
-    client = TestClient(app)
+def test_index_serves_dashboard(client: TestClient) -> None:
     response = client.get("/")
 
     assert response.status_code == 200
     assert "Grid Interconnection Copilot" in response.text
-    assert "Generate memo" in response.text
+    assert "Portfolio workspace" in response.text
+    assert "Run portfolio analysis" in response.text
+    assert "Import sites from CSV" in response.text

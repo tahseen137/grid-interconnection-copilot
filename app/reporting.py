@@ -28,10 +28,16 @@ def compare_sites(payload: ComparisonRequest) -> ComparisonResponse:
         gating_risks.extend(assessment.risk_flags[:2])
 
     top_pick = rankings[0].site_name
-    recommendation = (
-        f"Advance {top_pick} into deeper interconnection and permitting diligence first. "
-        f"Hold the remaining {len(rankings) - 1} site(s) as backups until upgrade costs and schedule risk are refined."
-    )
+    if len(rankings) == 1:
+        recommendation = (
+            f"Advance {top_pick} into deeper interconnection and permitting diligence. "
+            "No backup site is currently in the portfolio, so maintain an active pipeline until the next screen is complete."
+        )
+    else:
+        recommendation = (
+            f"Advance {top_pick} into deeper interconnection and permitting diligence first. "
+            f"Hold the remaining {len(rankings) - 1} site(s) as backups until upgrade costs and schedule risk are refined."
+        )
 
     return ComparisonResponse(
         portfolio_name=payload.portfolio_name,

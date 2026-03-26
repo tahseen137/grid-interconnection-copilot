@@ -1,12 +1,7 @@
 from fastapi.testclient import TestClient
 
-from app.main import app
 
-
-client = TestClient(app)
-
-
-def test_region_reference_endpoint_returns_profiles() -> None:
+def test_region_reference_endpoint_returns_profiles(client: TestClient) -> None:
     response = client.get("/api/reference/regions")
 
     assert response.status_code == 200
@@ -15,7 +10,7 @@ def test_region_reference_endpoint_returns_profiles() -> None:
     assert any(region["region"] == "ERCOT" for region in body["regions"])
 
 
-def test_score_site_endpoint_returns_assessment() -> None:
+def test_score_site_endpoint_returns_assessment(client: TestClient) -> None:
     response = client.post(
         "/api/sites/score",
         json={

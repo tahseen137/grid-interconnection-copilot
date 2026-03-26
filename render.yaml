@@ -1,6 +1,6 @@
 databases:
   - name: grid-interconnection-copilot-db
-    plan: starter
+    plan: basic_256mb
     databaseName: gridcopilot
     user: gridcopilot
 

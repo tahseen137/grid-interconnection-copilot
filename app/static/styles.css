@@ -1,0 +1,251 @@
+:root {
+  --bg: #0d1b1e;
+  --panel: rgba(15, 35, 39, 0.88);
+  --panel-strong: #11363d;
+  --text: #eef6f2;
+  --muted: #9fc3bc;
+  --accent: #8cf5c4;
+  --accent-2: #f1b36a;
+  --border: rgba(140, 245, 196, 0.18);
+  --danger: #ff8e7e;
+  --shadow: 0 24px 70px rgba(0, 0, 0, 0.28);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  font-family: "Space Grotesk", sans-serif;
+  background:
+    radial-gradient(circle at top left, rgba(140, 245, 196, 0.14), transparent 28%),
+    radial-gradient(circle at top right, rgba(241, 179, 106, 0.16), transparent 24%),
+    linear-gradient(180deg, #071114 0%, #0d1b1e 100%);
+  color: var(--text);
+}
+
+.shell {
+  width: min(1180px, calc(100vw - 32px));
+  margin: 0 auto;
+  padding: 32px 0 48px;
+}
+
+.hero,
+.workspace,
+.results {
+  margin-bottom: 24px;
+}
+
+.hero {
+  display: grid;
+  grid-template-columns: 1.6fr 1fr;
+  gap: 20px;
+  align-items: stretch;
+}
+
+.hero-copy,
+.hero-card,
+.panel,
+.site-card {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 24px;
+  box-shadow: var(--shadow);
+}
+
+.hero-copy {
+  padding: 32px;
+}
+
+.hero-card {
+  padding: 24px;
+  background: linear-gradient(180deg, rgba(17, 54, 61, 0.95), rgba(9, 26, 30, 0.95));
+}
+
+.eyebrow {
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  font-size: 0.78rem;
+  color: var(--accent);
+  margin: 0 0 10px;
+}
+
+h1,
+h2,
+h3,
+strong {
+  margin: 0;
+}
+
+h1 {
+  font-size: clamp(2.2rem, 5vw, 4.4rem);
+  line-height: 0.95;
+  max-width: 10ch;
+}
+
+.lede,
+.hero-card li,
+.empty-state,
+.site-card label,
+.memo-output,
+.comparison-card p {
+  color: var(--muted);
+}
+
+.lede {
+  max-width: 60ch;
+  font-size: 1.02rem;
+}
+
+.hero-actions,
+.workspace-header,
+.field-row,
+.result-grid {
+  display: flex;
+  gap: 12px;
+}
+
+.hero-actions {
+  margin-top: 24px;
+}
+
+button {
+  border: 0;
+  border-radius: 999px;
+  padding: 12px 18px;
+  font: inherit;
+  cursor: pointer;
+}
+
+button.primary {
+  background: var(--accent);
+  color: #052018;
+  font-weight: 700;
+}
+
+button.ghost {
+  background: transparent;
+  color: var(--text);
+  border: 1px solid var(--border);
+}
+
+.workspace {
+  background: rgba(10, 25, 29, 0.8);
+  border: 1px solid var(--border);
+  border-radius: 28px;
+  padding: 24px;
+}
+
+.workspace-header {
+  justify-content: space-between;
+  align-items: end;
+  margin-bottom: 18px;
+}
+
+.site-grid,
+.results {
+  display: grid;
+  gap: 20px;
+}
+
+.site-grid {
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+}
+
+.results {
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+}
+
+.site-card,
+.panel {
+  padding: 20px;
+}
+
+.site-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 14px;
+}
+
+.remove-site {
+  background: rgba(255, 142, 126, 0.1);
+  color: var(--danger);
+  padding: 8px 12px;
+}
+
+label {
+  display: block;
+  font-size: 0.9rem;
+  margin-bottom: 12px;
+}
+
+input,
+select {
+  width: 100%;
+  margin-top: 6px;
+  border-radius: 14px;
+  border: 1px solid rgba(159, 195, 188, 0.18);
+  background: rgba(8, 18, 20, 0.8);
+  color: var(--text);
+  padding: 12px 14px;
+  font: inherit;
+}
+
+.field-row {
+  align-items: flex-start;
+}
+
+.field-row > label {
+  flex: 1;
+}
+
+.empty-state,
+.memo-output,
+.comparison-card {
+  min-height: 180px;
+  border-radius: 20px;
+  border: 1px dashed rgba(159, 195, 188, 0.22);
+  padding: 16px;
+}
+
+.comparison-card {
+  background: rgba(17, 54, 61, 0.45);
+}
+
+.comparison-card strong {
+  display: block;
+  margin-bottom: 8px;
+}
+
+.pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 6px 10px;
+  border-radius: 999px;
+  background: rgba(140, 245, 196, 0.12);
+  color: var(--accent);
+  font-size: 0.8rem;
+  margin-bottom: 10px;
+}
+
+.memo-output {
+  font-family: "IBM Plex Mono", monospace;
+  white-space: pre-wrap;
+  line-height: 1.5;
+  overflow-x: auto;
+}
+
+@media (max-width: 860px) {
+  .hero {
+    grid-template-columns: 1fr;
+  }
+
+  .hero-actions,
+  .workspace-header,
+  .field-row {
+    flex-direction: column;
+  }
+}

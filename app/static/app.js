@@ -28,12 +28,19 @@ const importSitesButton = document.querySelector("#import-sites");
 const siteImportFile = document.querySelector("#site-import-file");
 const currentUserBadge = document.querySelector("#current-user-badge");
 const currentRoleText = document.querySelector("#current-role-text");
+const adminPanel = document.querySelector("#admin-panel");
+const adminStatus = document.querySelector("#admin-status");
+const userForm = document.querySelector("#user-form");
+const userList = document.querySelector("#user-list");
+const activityList = document.querySelector("#activity-list");
 const pageDataset = document.body.dataset;
 
 const state = {
   projectSummaries: [],
   selectedProject: null,
   regionProfiles: [],
+  users: [],
+  activity: [],
   session: {
     authRequired: pageDataset.authRequired === "true",
     canWrite: pageDataset.canWrite === "true",
@@ -109,6 +116,13 @@ function formatDate(isoString) {
   return new Date(isoString).toLocaleString();
 }
 
+function formatRelativeDate(isoString) {
+  if (!isoString) {
+    return "Unknown";
+  }
+  return new Date(isoString).toLocaleString();
+}
+
 function renderProjects() {
   if (!state.projectSummaries.length) {
     projectList.className = "project-list empty-state";
@@ -151,6 +165,20 @@ function applySessionState() {
     field.disabled = !state.session.canWrite;
   });
   projectForm.classList.toggle("disabled-stack", !state.session.canWrite);
+
+  if (adminPanel) {
+    adminPanel.hidden = !state.session.canManageUsers;
+  }
+  if (userForm) {
+    userForm.querySelectorAll("input, select, button").forEach((field) => {
+      field.disabled = !state.session.canManageUsers;
+    });
+  }
+  if (adminStatus) {
+    adminStatus.textContent = state.session.canManageUsers
+      ? "Create analysts, viewers, and additional admins for this workspace."
+      : "Admin access is required to manage workspace users.";
+  }
 }
 
 function setSiteFormEnabled(enabled) {
@@ -300,6 +328,120 @@ function renderRegionProfiles() {
     .join("");
 }
 
+function renderUsers() {
+  if (!state.session.canManageUsers) {
+    return;
+  }
+  if (!state.users.length) {
+    userList.className = "site-list empty-state";
+    userList.textContent = "No workspace users loaded yet.";
+    return;
+  }
+
+  userList.className = "site-list";
+  userList.innerHTML = state.users
+    .map(
+      (user) => `
+        <article class="site-result-card">
+          <div class="site-result-header">
+            <div>
+              <strong>${user.full_name || user.username}</strong>
+              <p class="muted-text">${user.username} - ${user.role} - ${user.is_active ? "active" : "inactive"}</p>
+            </div>
+            <span class="pill">${user.role}</span>
+          </div>
+          <p class="muted-text">Last login: ${formatRelativeDate(user.last_login_at)} - Locked until: ${user.locked_until ? formatRelativeDate(user.locked_until) : "Not locked"}</p>
+          <div class="field-row">
+            <label>
+              Role
+              <select data-user-role="${user.id}">
+                <option value="admin" ${user.role === "admin" ? "selected" : ""}>Admin</option>
+                <option value="analyst" ${user.role === "analyst" ? "selected" : ""}>Analyst</option>
+                <option value="viewer" ${user.role === "viewer" ? "selected" : ""}>Viewer</option>
+              </select>
+            </label>
+            <label>
+              Active
+              <select data-user-active="${user.id}">
+                <option value="true" ${user.is_active ? "selected" : ""}>Active</option>
+                <option value="false" ${!user.is_active ? "selected" : ""}>Inactive</option>
+              </select>
+            </label>
+          </div>
+          <div class="project-actions">
+            <button class="ghost small" type="button" data-user-save="${user.id}">Save access</button>
+            <button class="ghost small" type="button" data-user-reset="${user.id}">Reset password</button>
+          </div>
+        </article>
+      `
+    )
+    .join("");
+
+  userList.querySelectorAll("[data-user-save]").forEach((button) => {
+    button.addEventListener("click", async () => {
+      const userId = button.dataset.userSave;
+      const role = userList.querySelector(`[data-user-role="${userId}"]`).value;
+      const isActive = userList.querySelector(`[data-user-active="${userId}"]`).value === "true";
+      try {
+        await apiRequest(`/api/admin/users/${userId}`, {
+          method: "PATCH",
+          body: JSON.stringify({ role, is_active: isActive }),
+        });
+        await Promise.all([loadUsers(), loadActivity()]);
+        setStatus("User access updated.", "success");
+      } catch (error) {
+        setStatus(error.message, "error");
+      }
+    });
+  });
+
+  userList.querySelectorAll("[data-user-reset]").forEach((button) => {
+    button.addEventListener("click", async () => {
+      const userId = button.dataset.userReset;
+      const newPassword = window.prompt("Enter a new password for this user (minimum 8 characters).");
+      if (!newPassword) {
+        return;
+      }
+      try {
+        await apiRequest(`/api/admin/users/${userId}`, {
+          method: "PATCH",
+          body: JSON.stringify({ password: newPassword }),
+        });
+        await Promise.all([loadUsers(), loadActivity()]);
+        setStatus("User password reset.", "success");
+      } catch (error) {
+        setStatus(error.message, "error");
+      }
+    });
+  });
+}
+
+function renderActivity() {
+  if (!state.activity.length) {
+    activityList.className = "site-list empty-state";
+    activityList.textContent = "No recent activity recorded yet.";
+    return;
+  }
+
+  activityList.className = "site-list";
+  activityList.innerHTML = state.activity
+    .map(
+      (event) => `
+        <article class="site-result-card">
+          <div class="site-result-header">
+            <div>
+              <strong>${event.description}</strong>
+              <p class="muted-text">${event.actor_username} - ${event.action}</p>
+            </div>
+            <span class="pill">${formatRelativeDate(event.created_at)}</span>
+          </div>
+          <p class="muted-text">${event.entity_type}${event.project_id ? ` - Project ${event.project_id}` : ""}</p>
+        </article>
+      `
+    )
+    .join("");
+}
+
 async function refreshProjects(selectedId = state.selectedProject?.id) {
   state.projectSummaries = await apiRequest("/api/projects");
   renderProjects();
@@ -330,6 +472,20 @@ async function loadRegionProfiles() {
   const response = await apiRequest("/api/reference/regions");
   state.regionProfiles = response.regions;
   renderRegionProfiles();
+}
+
+async function loadUsers() {
+  if (!state.session.canManageUsers) {
+    state.users = [];
+    return;
+  }
+  state.users = await apiRequest("/api/admin/users");
+  renderUsers();
+}
+
+async function loadActivity() {
+  state.activity = await apiRequest("/api/activity");
+  renderActivity();
 }
 
 async function loadDemoProject() {
@@ -485,8 +641,7 @@ deleteProjectButton.addEventListener("click", async () => {
 
 refreshWorkspaceButton.addEventListener("click", async () => {
   setStatus("Refreshing workspace...", "info");
-  await refreshProjects();
-  await loadRegionProfiles();
+  await Promise.all([refreshProjects(), loadRegionProfiles(), loadActivity(), loadUsers()]);
   setStatus("Workspace refreshed.", "success");
 });
 
@@ -503,6 +658,31 @@ if (logoutButton) {
     try {
       await apiRequest("/api/session/logout", { method: "POST" });
       window.location.assign("/login");
+    } catch (error) {
+      setStatus(error.message, "error");
+    }
+  });
+}
+
+if (userForm) {
+  userForm.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    if (!state.session.canManageUsers) {
+      setStatus("Admin access is required to create users.", "error");
+      return;
+    }
+
+    const formData = new FormData(userForm);
+    const payload = Object.fromEntries(formData.entries());
+    try {
+      await apiRequest("/api/admin/users", {
+        method: "POST",
+        body: JSON.stringify(payload),
+      });
+      userForm.reset();
+      userForm.querySelector("[name='role']").value = "analyst";
+      await Promise.all([loadUsers(), loadActivity()]);
+      setStatus("Workspace user created.", "success");
     } catch (error) {
       setStatus(error.message, "error");
     }
@@ -558,7 +738,7 @@ importSitesButton.addEventListener("click", async () => {
 async function bootstrap() {
   try {
     applySessionState();
-    await Promise.all([refreshProjects(), loadRegionProfiles()]);
+    await Promise.all([refreshProjects(), loadRegionProfiles(), loadActivity(), loadUsers()]);
     if (!state.session.canWrite) {
       setStatus("Workspace ready in read-only mode.", "info");
       return;

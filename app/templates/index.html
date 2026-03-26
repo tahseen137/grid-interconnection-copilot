@@ -320,6 +320,56 @@
               <pre id="memo-output" class="memo-output">No analysis memo yet.</pre>
             </div>
           </div>
+
+          <div class="results-grid">
+            <div id="admin-panel" class="panel">
+              <div class="section-header compact">
+                <div>
+                  <p class="eyebrow">Access</p>
+                  <h3>Workspace team</h3>
+                </div>
+              </div>
+              <div id="admin-status" class="status-banner muted-text">
+                Admin access is required to manage workspace users.
+              </div>
+              <form id="user-form" class="stack">
+                <label>
+                  Username
+                  <input name="username" type="text" minlength="3" maxlength="50" />
+                </label>
+                <label>
+                  Full name
+                  <input name="full_name" type="text" maxlength="120" />
+                </label>
+                <div class="field-row">
+                  <label>
+                    Role
+                    <select name="role">
+                      <option value="analyst">Analyst</option>
+                      <option value="viewer">Viewer</option>
+                      <option value="admin">Admin</option>
+                    </select>
+                  </label>
+                  <label>
+                    Password
+                    <input name="password" type="password" minlength="8" maxlength="200" />
+                  </label>
+                </div>
+                <button type="submit" class="primary full-width">Create user</button>
+              </form>
+              <div id="user-list" class="site-list empty-state">No workspace users loaded yet.</div>
+            </div>
+
+            <div class="panel">
+              <div class="section-header compact">
+                <div>
+                  <p class="eyebrow">Audit</p>
+                  <h3>Recent activity</h3>
+                </div>
+              </div>
+              <div id="activity-list" class="site-list empty-state">Loading recent activity...</div>
+            </div>
+          </div>
         </section>
       </section>
 

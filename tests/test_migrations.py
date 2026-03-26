@@ -17,8 +17,8 @@ def test_alembic_upgrade_creates_expected_schema(tmp_path) -> None:
     inspector = inspect(engine)
     table_names = set(inspector.get_table_names())
 
-    assert {"alembic_version", "users", "projects", "sites", "analysis_runs", "analysis_site_results"}.issubset(table_names)
+    assert {"alembic_version", "users", "activity_events", "projects", "sites", "analysis_runs", "analysis_site_results"}.issubset(table_names)
     with engine.connect() as connection:
         version = connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one()
-    assert version == "20260326_02"
+    assert version == "20260326_03"
     engine.dispose()

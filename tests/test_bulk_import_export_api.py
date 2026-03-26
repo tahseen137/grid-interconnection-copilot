@@ -81,3 +81,26 @@ Broken Site,ERCOT,TX,solar,-1,2.2,14,7.5,138,16,84,low,secured,low,Bad acreage
     detail = response.json()["detail"]
     assert detail["skipped_blank_rows"] == 0
     assert "acreage" in detail["errors"][0]
+
+
+def test_bulk_import_rejects_empty_upload_and_exports_require_analysis(client: TestClient) -> None:
+    project_id = _create_project(client)
+
+    empty_import_response = client.post(
+        f"/api/projects/{project_id}/sites/import-csv",
+        json={
+            "csv_content": """name,region,state,technology,acreage,distance_to_substation_km,queue_wait_months,estimated_upgrade_cost_musd,transmission_voltage_kv,environmental_sensitivity,community_support,permitting_complexity,site_control,land_use_conflict,notes
+
+"""
+        },
+    )
+    assert empty_import_response.status_code == 400
+    assert empty_import_response.json()["detail"] == "No valid site rows were found in the CSV upload"
+
+    rankings_response = client.get(f"/api/projects/{project_id}/analysis/latest.csv")
+    assert rankings_response.status_code == 404
+    assert rankings_response.json()["detail"] == "No analysis has been run yet"
+
+    memo_response = client.get(f"/api/projects/{project_id}/analysis/latest.md")
+    assert memo_response.status_code == 404
+    assert memo_response.json()["detail"] == "No analysis has been run yet"

@@ -70,3 +70,17 @@ def test_login_page_redirects_after_authentication(auth_client: TestClient) -> N
 
     assert response.status_code == 303
     assert response.headers["location"] == "/api/projects"
+
+
+def test_login_behaviour_when_auth_is_disabled(client: TestClient) -> None:
+    login_page_response = client.get("/login", follow_redirects=False)
+    assert login_page_response.status_code == 303
+    assert login_page_response.headers["location"] == "/"
+
+    login_response = client.post(
+        "/api/session/login",
+        json={"password": "ignored", "next_path": "/"},
+    )
+    assert login_response.status_code == 200
+    assert login_response.json()["auth_enabled"] is False
+    assert login_response.json()["authenticated"] is True

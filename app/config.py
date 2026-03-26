@@ -16,6 +16,7 @@ class Settings(BaseSettings):
     trusted_hosts: str = "*"
     enable_gzip: bool = True
     enforce_https: bool = False
+    auto_create_schema: bool = True
 
     model_config = SettingsConfigDict(
         env_file=".env",

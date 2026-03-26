@@ -92,3 +92,84 @@ def test_analysis_requires_at_least_one_site(client: TestClient) -> None:
     analysis_response = client.post(f"/api/projects/{project_id}/analysis")
     assert analysis_response.status_code == 400
     assert analysis_response.json()["detail"] == "Add at least one site before running analysis"
+
+
+def test_project_and_site_not_found_paths(client: TestClient) -> None:
+    project_response = client.post(
+        "/api/projects",
+        json={
+            "name": "Path Coverage Project",
+            "developer": "North Fork Development",
+            "status": "draft",
+            "technology_focus": "solar",
+            "target_cod_year": 2030,
+            "notes": "",
+        },
+    )
+    project_id = project_response.json()["id"]
+
+    missing_project_response = client.get("/api/projects/missing-project")
+    assert missing_project_response.status_code == 404
+    assert missing_project_response.json()["detail"] == "Project not found"
+
+    list_sites_response = client.get(f"/api/projects/{project_id}/sites")
+    assert list_sites_response.status_code == 200
+    assert list_sites_response.json() == []
+
+    missing_site_response = client.patch(
+        f"/api/projects/{project_id}/sites/missing-site",
+        json={"name": "Updated"},
+    )
+    assert missing_site_response.status_code == 404
+    assert missing_site_response.json()["detail"] == "Site not found"
+
+
+def test_site_update_duplicate_validation_and_delete_project(client: TestClient) -> None:
+    create_response = client.post(
+        "/api/projects",
+        json={
+            "name": "Delete Coverage Project",
+            "developer": "Prairie Grid Partners",
+            "status": "screening",
+            "technology_focus": "solar_storage",
+            "target_cod_year": 2029,
+            "notes": "",
+        },
+    )
+    project_id = create_response.json()["id"]
+
+    first_site = client.post(
+        f"/api/projects/{project_id}/sites",
+        json=_site_payload("West Texas Pivot"),
+    ).json()
+    second_site = client.post(
+        f"/api/projects/{project_id}/sites",
+        json=_site_payload("Permian Ridge"),
+    ).json()
+
+    duplicate_add_response = client.post(
+        f"/api/projects/{project_id}/sites",
+        json=_site_payload("West Texas Pivot"),
+    )
+    assert duplicate_add_response.status_code == 400
+    assert duplicate_add_response.json()["detail"] == "Site names must be unique within a project"
+
+    update_site_response = client.patch(
+        f"/api/projects/{project_id}/sites/{second_site['id']}",
+        json={"name": "South Plains Storage"},
+    )
+    assert update_site_response.status_code == 200
+    assert update_site_response.json()["name"] == "South Plains Storage"
+
+    duplicate_update_response = client.patch(
+        f"/api/projects/{project_id}/sites/{second_site['id']}",
+        json={"name": first_site["name"]},
+    )
+    assert duplicate_update_response.status_code == 400
+    assert duplicate_update_response.json()["detail"] == "Site names must be unique within a project"
+
+    delete_site_response = client.delete(f"/api/projects/{project_id}/sites/{first_site['id']}")
+    assert delete_site_response.status_code == 204
+
+    delete_project_response = client.delete(f"/api/projects/{project_id}")
+    assert delete_project_response.status_code == 204

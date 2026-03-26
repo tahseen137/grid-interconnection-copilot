@@ -1,3 +1,5 @@
+import pytest
+
 from app.portfolio_io import analysis_results_csv, parse_sites_csv, site_template_csv
 from app.schemas import ProjectCreate, SiteCreate
 from app.services import add_site_to_project, create_project, get_project, run_project_analysis
@@ -29,6 +31,16 @@ Broken Site,ERCOT,TX,solar,-1,2.2,14,7.5,138,16,84,low,secured,low,Bad acreage
     assert skipped_blank_rows == 0
     assert len(errors) == 1
     assert "acreage" in errors[0]
+
+
+def test_parse_sites_csv_requires_header_row() -> None:
+    with pytest.raises(ValueError, match="header row"):
+        parse_sites_csv("   ")
+
+
+def test_parse_sites_csv_requires_expected_columns() -> None:
+    with pytest.raises(ValueError, match="required columns"):
+        parse_sites_csv("name,region\nWest Texas Pivot,ERCOT")
 
 
 def test_site_template_and_analysis_export(session) -> None:

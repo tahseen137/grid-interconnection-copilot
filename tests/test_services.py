@@ -161,3 +161,51 @@ def test_site_names_must_be_unique_within_project(session) -> None:
             second_site,
             SiteUpdate(name="alpha basin"),
         )
+
+
+def test_run_project_analysis_handles_empty_and_single_site_projects(session) -> None:
+    project = create_project(
+        session,
+        ProjectCreate(
+            name="Single Site Portfolio",
+            developer="GridWorks",
+            status="screening",
+            technology_focus="solar_storage",
+            target_cod_year=2030,
+            notes="",
+        ),
+    )
+    loaded_project = get_project(session, project.id)
+    assert loaded_project is not None
+
+    with pytest.raises(ValueError, match="At least one site"):
+        run_project_analysis(session, loaded_project)
+
+    add_site_to_project(
+        session,
+        loaded_project,
+        SiteCreate(
+            name="Alpha Basin",
+            region="ERCOT",
+            state="TX",
+            technology="solar_storage",
+            acreage=555,
+            distance_to_substation_km=2.1,
+            queue_wait_months=11,
+            estimated_upgrade_cost_musd=7.2,
+            transmission_voltage_kv=138,
+            environmental_sensitivity=16,
+            community_support=82,
+            permitting_complexity="low",
+            site_control="secured",
+            land_use_conflict="low",
+            notes="",
+        ),
+    )
+
+    refreshed_project = get_project(session, project.id)
+    assert refreshed_project is not None
+    analysis_run = run_project_analysis(session, refreshed_project)
+
+    assert analysis_run.top_pick_site_name == "Alpha Basin"
+    assert len(analysis_run.results) == 1

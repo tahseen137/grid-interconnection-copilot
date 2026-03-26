@@ -6,4 +6,5 @@ def test_index_serves_dashboard(client: TestClient) -> None:
 
     assert response.status_code == 200
     assert "Grid Interconnection Copilot" in response.text
-    assert "Generate memo" in response.text
+    assert "Portfolio workspace" in response.text
+    assert "Run portfolio analysis" in response.text

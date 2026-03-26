@@ -20,7 +20,7 @@ class DatabaseState:
     session_factory: sessionmaker[Session]
 
 
-def _ensure_sqlite_directory(database_url: str) -> None:
+def ensure_database_url_directory(database_url: str) -> None:
     if not database_url.startswith("sqlite:///"):
         return
     raw_path = database_url.removeprefix("sqlite:///")
@@ -29,7 +29,7 @@ def _ensure_sqlite_directory(database_url: str) -> None:
 
 def build_database_state(settings: Settings) -> DatabaseState:
     database_url = settings.resolved_database_url
-    _ensure_sqlite_directory(database_url)
+    ensure_database_url_directory(database_url)
 
     connect_args = {"check_same_thread": False} if database_url.startswith("sqlite") else {}
     engine = create_engine(database_url, future=True, pool_pre_ping=True, connect_args=connect_args)
@@ -37,7 +37,9 @@ def build_database_state(settings: Settings) -> DatabaseState:
     return DatabaseState(engine=engine, session_factory=session_factory)
 
 
-def init_database(database_state: DatabaseState) -> None:
+def init_database(database_state: DatabaseState, auto_create_schema: bool = True) -> None:
+    if not auto_create_schema:
+        return
     from app import models  # noqa: F401
 
     Base.metadata.create_all(database_state.engine)

@@ -102,7 +102,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
-        init_database(database_state)
+        init_database(database_state, auto_create_schema=resolved_settings.auto_create_schema)
         app.state.settings = resolved_settings
         app.state.database = database_state
         yield
@@ -231,10 +231,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @app.post("/api/session/login", response_model=SessionStatusResponse)
     def login_session(payload: SessionLoginRequest, request: Request) -> SessionStatusResponse:
+        auth_enabled = request.app.state.settings.auth_enabled
         next_path = sanitize_next_path(payload.next_path)
         if not authenticate_session(request, payload.password):
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid password")
-        return SessionStatusResponse(auth_enabled=True, authenticated=True, next_path=next_path)
+        return SessionStatusResponse(auth_enabled=auth_enabled, authenticated=True, next_path=next_path)
 
     @app.post("/api/session/logout", response_model=SessionStatusResponse)
     def logout_session(request: Request) -> SessionStatusResponse:

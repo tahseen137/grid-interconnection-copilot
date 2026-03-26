@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from uuid import uuid4
 
-from sqlalchemy import DateTime, Float, ForeignKey, Integer, String, Text
+from sqlalchemy import DateTime, Float, ForeignKey, Index, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.types import JSON
 
@@ -44,6 +44,10 @@ class Project(TimestampMixin, Base):
 
 class Site(TimestampMixin, Base):
     __tablename__ = "sites"
+    __table_args__ = (
+        UniqueConstraint("project_id", "name", name="uq_sites_project_name"),
+        Index("ix_sites_project_id", "project_id"),
+    )
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
     project_id: Mapped[str] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"), nullable=False)
@@ -69,6 +73,7 @@ class Site(TimestampMixin, Base):
 
 class AnalysisRun(Base):
     __tablename__ = "analysis_runs"
+    __table_args__ = (Index("ix_analysis_runs_project_id", "project_id"),)
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
     project_id: Mapped[str] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"), nullable=False)
@@ -90,6 +95,10 @@ class AnalysisRun(Base):
 
 class AnalysisSiteResult(Base):
     __tablename__ = "analysis_site_results"
+    __table_args__ = (
+        Index("ix_analysis_site_results_analysis_run_id", "analysis_run_id"),
+        Index("ix_analysis_site_results_site_id", "site_id"),
+    )
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
     analysis_run_id: Mapped[str] = mapped_column(ForeignKey("analysis_runs.id", ondelete="CASCADE"), nullable=False)

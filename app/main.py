@@ -1,4 +1,9 @@
-from fastapi import FastAPI
+from pathlib import Path
+
+from fastapi import FastAPI, Request
+from fastapi.responses import HTMLResponse
+from fastapi.staticfiles import StaticFiles
+from fastapi.templating import Jinja2Templates
 
 from app.reporting import compare_sites, generate_investment_memo
 from app.schemas import (
@@ -17,11 +22,20 @@ app = FastAPI(
     title="Grid Interconnection & Energy Siting Copilot",
     version="0.1.0",
 )
+BASE_DIR = Path(__file__).resolve().parent
+templates = Jinja2Templates(directory=str(BASE_DIR / "templates"))
+app.mount("/static", StaticFiles(directory=str(BASE_DIR / "static")), name="static")
 
 
 @app.get("/health")
 def healthcheck() -> dict[str, str]:
     return {"status": "ok"}
+
+
+@app.get("/", response_class=HTMLResponse)
+def index(request: Request) -> HTMLResponse:
+    template = templates.get_template("index.html")
+    return HTMLResponse(template.render(request=request))
 
 
 @app.get("/api/reference/regions", response_model=RegionReferenceResponse)

@@ -1,6 +1,15 @@
 from fastapi import FastAPI
 
-from app.schemas import RegionReferenceResponse, SiteAssessment, SiteInput
+from app.reporting import compare_sites, generate_investment_memo
+from app.schemas import (
+    ComparisonRequest,
+    ComparisonResponse,
+    InvestmentMemoRequest,
+    InvestmentMemoResponse,
+    RegionReferenceResponse,
+    SiteAssessment,
+    SiteInput,
+)
 from app.scoring import REFERENCE_PROFILES, assess_site
 
 
@@ -23,3 +32,13 @@ def list_region_reference() -> RegionReferenceResponse:
 @app.post("/api/sites/score", response_model=SiteAssessment)
 def score_site(payload: SiteInput) -> SiteAssessment:
     return assess_site(payload)
+
+
+@app.post("/api/sites/compare", response_model=ComparisonResponse)
+def compare_site_options(payload: ComparisonRequest) -> ComparisonResponse:
+    return compare_sites(payload)
+
+
+@app.post("/api/reports/interconnection-memo", response_model=InvestmentMemoResponse)
+def create_investment_memo(payload: InvestmentMemoRequest) -> InvestmentMemoResponse:
+    return generate_investment_memo(payload)

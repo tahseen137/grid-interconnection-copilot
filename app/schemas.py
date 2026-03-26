@@ -54,3 +54,35 @@ class SiteAssessment(BaseModel):
     strengths: list[str]
     next_actions: list[str]
 
+
+class RankedAssessment(SiteAssessment):
+    rank: int
+    recommended_for_next_stage: bool
+
+
+class ComparisonRequest(BaseModel):
+    portfolio_name: str = Field(..., min_length=3, max_length=120)
+    sites: list[SiteInput] = Field(..., min_length=2, max_length=10)
+
+
+class ComparisonResponse(BaseModel):
+    portfolio_name: str
+    top_pick: str
+    rankings: list[RankedAssessment]
+    gating_risks: list[str]
+    portfolio_recommendation: str
+
+
+class InvestmentMemoRequest(BaseModel):
+    project_name: str = Field(..., min_length=3, max_length=120)
+    target_cod_year: int = Field(..., ge=2026, le=2040)
+    sites: list[SiteInput] = Field(..., min_length=1, max_length=5)
+
+
+class InvestmentMemoResponse(BaseModel):
+    project_name: str
+    recommended_site: str
+    executive_summary: str
+    diligence_priorities: list[str]
+    memo_markdown: str
+

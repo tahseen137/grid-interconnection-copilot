@@ -9,6 +9,7 @@ PermittingComplexity = Literal["low", "medium", "high"]
 SiteControlStatus = Literal["none", "optioned", "secured"]
 LandUseConflict = Literal["low", "medium", "high"]
 ReadinessTier = Literal["strong", "watchlist", "high_risk"]
+UserRole = Literal["admin", "analyst", "viewer"]
 
 
 class RegionReference(BaseModel):
@@ -180,14 +181,34 @@ class ProjectRead(BaseModel):
 
 
 class SessionLoginRequest(BaseModel):
+    username: str = Field(..., min_length=3, max_length=50, pattern=r"^[a-zA-Z0-9._-]+$")
     password: str = Field(..., min_length=1, max_length=200)
     next_path: str = Field(default="/", max_length=500)
 
 
+class CurrentUserResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str
+    username: str
+    full_name: str
+    role: UserRole
+    is_active: bool
+    last_login_at: datetime | None
+
+
+class PermissionSummary(BaseModel):
+    can_write: bool
+    can_manage_users: bool
+
+
 class SessionStatusResponse(BaseModel):
-    auth_enabled: bool
+    auth_required: bool
     authenticated: bool
     next_path: str | None = None
+    csrf_token: str | None = None
+    current_user: CurrentUserResponse | None = None
+    permissions: PermissionSummary = PermissionSummary(can_write=True, can_manage_users=False)
 
 
 class SiteBulkImportRequest(BaseModel):

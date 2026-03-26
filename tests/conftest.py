@@ -41,8 +41,9 @@ def auth_settings(tmp_path) -> Settings:
     return Settings(
         app_env="test",
         database_url=f"sqlite:///{(tmp_path / 'grid-auth-test.db').resolve()}",
-        app_access_password="pilot-password",
         session_secret="test-session-secret",
+        bootstrap_admin_username="admin",
+        bootstrap_admin_password="pilot-password",
     )
 
 
@@ -51,3 +52,14 @@ def auth_client(auth_settings: Settings) -> Generator[TestClient, None, None]:
     app = create_app(auth_settings)
     with TestClient(app) as test_client:
         yield test_client
+
+
+@pytest.fixture
+def analyst_settings(tmp_path) -> Settings:
+    return Settings(
+        app_env="test",
+        database_url=f"sqlite:///{(tmp_path / 'grid-analyst-test.db').resolve()}",
+        session_secret="test-session-secret",
+        bootstrap_admin_username="admin",
+        bootstrap_admin_password="pilot-password",
+    )

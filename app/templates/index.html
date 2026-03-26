@@ -12,7 +12,14 @@
     />
     <link rel="stylesheet" href="/static/styles.css" />
   </head>
-  <body>
+  <body
+    data-auth-required="{{ 'true' if auth_required else 'false' }}"
+    data-can-write="{{ 'true' if permissions.can_write else 'false' }}"
+    data-can-manage-users="{{ 'true' if permissions.can_manage_users else 'false' }}"
+    data-csrf-token="{{ csrf_token }}"
+    data-current-user="{{ current_user.username if current_user else '' }}"
+    data-current-role="{{ current_user.role if current_user else '' }}"
+  >
     <main class="shell">
       <section class="hero panel">
         <div>
@@ -24,9 +31,19 @@
           </p>
         </div>
         <div class="hero-actions">
+          <div class="hero-status">
+            <span class="pill" id="current-user-badge">{{ current_user.username if current_user else "Open workspace" }}</span>
+            <span class="muted-text" id="current-role-text">
+              {% if current_user %}
+              Signed in as {{ current_user.role }}.
+              {% else %}
+              Local workspace mode.
+              {% endif %}
+            </span>
+          </div>
           <button id="load-demo" class="ghost">Load demo project</button>
           <button id="refresh-workspace" class="primary">Refresh workspace</button>
-          {% if auth_enabled %}
+          {% if auth_required %}
           <button id="logout" class="ghost danger">Log out</button>
           {% endif %}
           <div class="hero-status">

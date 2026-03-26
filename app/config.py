@@ -11,8 +11,12 @@ class Settings(BaseSettings):
     database_url: str | None = None
     database_path: Path = Path("data/grid_interconnection.db")
     app_access_password: str | None = None
+    bootstrap_admin_username: str | None = None
+    bootstrap_admin_password: str | None = None
     session_secret: str | None = None
     session_max_age_seconds: int = 60 * 60 * 12
+    max_login_attempts: int = 5
+    login_lockout_minutes: int = 15
     trusted_hosts: str = "*"
     enable_gzip: bool = True
     enforce_https: bool = False
@@ -26,7 +30,10 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def validate_auth_configuration(self) -> "Settings":
-        if self.app_access_password and not self.session_secret:
+        bootstrap_present = bool(self.bootstrap_admin_username or self.bootstrap_admin_password)
+        if bootstrap_present and not (self.bootstrap_admin_username and self.bootstrap_admin_password):
+            raise ValueError("bootstrap_admin_username and bootstrap_admin_password must be configured together")
+        if (self.app_access_password or bootstrap_present) and not self.session_secret:
             raise ValueError("session_secret is required when app_access_password is configured")
         return self
 
@@ -39,8 +46,13 @@ class Settings(BaseSettings):
 
     @computed_field  # type: ignore[prop-decorator]
     @property
-    def auth_enabled(self) -> bool:
+    def legacy_password_login_enabled(self) -> bool:
         return bool(self.app_access_password)
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def bootstrap_admin_configured(self) -> bool:
+        return bool(self.bootstrap_admin_username and self.bootstrap_admin_password)
 
     @computed_field  # type: ignore[prop-decorator]
     @property

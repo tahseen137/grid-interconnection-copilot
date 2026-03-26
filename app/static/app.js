@@ -26,11 +26,22 @@ const downloadMemoButton = document.querySelector("#download-memo");
 const downloadTemplateButton = document.querySelector("#download-template");
 const importSitesButton = document.querySelector("#import-sites");
 const siteImportFile = document.querySelector("#site-import-file");
+const currentUserBadge = document.querySelector("#current-user-badge");
+const currentRoleText = document.querySelector("#current-role-text");
+const pageDataset = document.body.dataset;
 
 const state = {
   projectSummaries: [],
   selectedProject: null,
   regionProfiles: [],
+  session: {
+    authRequired: pageDataset.authRequired === "true",
+    canWrite: pageDataset.canWrite === "true",
+    canManageUsers: pageDataset.canManageUsers === "true",
+    csrfToken: pageDataset.csrfToken || "",
+    username: pageDataset.currentUser || "",
+    role: pageDataset.currentRole || "",
+  },
 };
 
 function formatErrorDetail(detail) {
@@ -47,17 +58,28 @@ function formatErrorDetail(detail) {
 }
 
 async function apiRequest(url, options = {}) {
+  const method = (options.method || "GET").toUpperCase();
+  const headers = {
+    "Content-Type": "application/json",
+    ...(options.headers || {}),
+  };
+
+  if (["POST", "PUT", "PATCH", "DELETE"].includes(method) && state.session.csrfToken) {
+    headers["X-CSRF-Token"] = state.session.csrfToken;
+  }
+
   const response = await fetch(url, {
-    headers: {
-      "Content-Type": "application/json",
-      ...(options.headers || {}),
-    },
+    headers,
     ...options,
   });
 
   if (response.status === 401) {
     window.location.assign("/login?next=%2F");
     throw new Error("Authentication required");
+  }
+  if (response.status === 403) {
+    const payload = await response.json().catch(() => ({ detail: "Access denied" }));
+    throw new Error(payload.detail || "Access denied");
   }
 
   if (response.status === 204) {
@@ -116,13 +138,29 @@ function renderProjects() {
   });
 }
 
-function setSiteFormEnabled(enabled) {
-  siteForm.classList.toggle("disabled-stack", !enabled);
-  siteForm.querySelectorAll("input, select, textarea, button").forEach((field) => {
-    field.disabled = !enabled;
+function applySessionState() {
+  const label = state.session.username || "Open workspace";
+  const roleDescription = state.session.authRequired
+    ? `Signed in as ${state.session.role || "user"}.`
+    : "Local workspace mode.";
+
+  currentUserBadge.textContent = label;
+  currentRoleText.textContent = roleDescription;
+  loadDemoButton.disabled = !state.session.canWrite;
+  projectForm.querySelectorAll("input, select, textarea, button").forEach((field) => {
+    field.disabled = !state.session.canWrite;
   });
-  importSitesButton.disabled = !enabled;
-  siteImportFile.disabled = !enabled;
+  projectForm.classList.toggle("disabled-stack", !state.session.canWrite);
+}
+
+function setSiteFormEnabled(enabled) {
+  const isEnabled = enabled && state.session.canWrite;
+  siteForm.classList.toggle("disabled-stack", !isEnabled);
+  siteForm.querySelectorAll("input, select, textarea, button").forEach((field) => {
+    field.disabled = !isEnabled;
+  });
+  importSitesButton.disabled = !isEnabled;
+  siteImportFile.disabled = !isEnabled;
 }
 
 function renderSelectedProject() {
@@ -130,7 +168,7 @@ function renderSelectedProject() {
   if (!project) {
     projectName.textContent = "No project selected";
     projectSubtitle.textContent = "Create a project or load demo data to start working.";
-    projectNotes.textContent = "Project notes will appear here.";
+  projectNotes.textContent = "Project notes will appear here.";
     metricSites.textContent = "0";
     metricStatus.textContent = "Draft";
     metricCod.textContent = "-";
@@ -159,8 +197,8 @@ function renderSelectedProject() {
   metricStatus.textContent = project.status;
   metricCod.textContent = String(project.target_cod_year);
   metricTopPick.textContent = latestAnalysis?.top_pick_site_name || "-";
-  runAnalysisButton.disabled = project.sites.length === 0;
-  deleteProjectButton.disabled = false;
+  runAnalysisButton.disabled = project.sites.length === 0 || !state.session.canWrite;
+  deleteProjectButton.disabled = !state.session.canWrite;
   exportProjectButton.disabled = false;
   downloadRankingsButton.disabled = !latestAnalysis;
   downloadMemoButton.disabled = !latestAnalysis;
@@ -181,7 +219,7 @@ function renderSelectedProject() {
                 <strong>${site.name}</strong>
                 <p class="muted-text">${site.region} - ${site.state} - ${site.technology.replaceAll("_", " ")}</p>
               </div>
-              <button class="ghost danger small" data-delete-site="${site.id}">Delete</button>
+              ${state.session.canWrite ? `<button class="ghost danger small" data-delete-site="${site.id}">Delete</button>` : ""}
             </div>
             <p class="muted-text">Queue: ${site.queue_wait_months} months - Upgrade cost: $${site.estimated_upgrade_cost_musd}M - Substation distance: ${site.distance_to_substation_km} km</p>
             ${
@@ -519,7 +557,12 @@ importSitesButton.addEventListener("click", async () => {
 
 async function bootstrap() {
   try {
+    applySessionState();
     await Promise.all([refreshProjects(), loadRegionProfiles()]);
+    if (!state.session.canWrite) {
+      setStatus("Workspace ready in read-only mode.", "info");
+      return;
+    }
     setStatus("Workspace ready.", "success");
   } catch (error) {
     setStatus(error.message, "error");

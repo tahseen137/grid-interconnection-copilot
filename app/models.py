@@ -19,6 +19,24 @@ class TimestampMixin:
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_timestamp, onupdate=_timestamp)
 
 
+class User(TimestampMixin, Base):
+    __tablename__ = "users"
+    __table_args__ = (
+        UniqueConstraint("username", name="uq_users_username"),
+        Index("ix_users_role", "role"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
+    username: Mapped[str] = mapped_column(String(50), nullable=False)
+    full_name: Mapped[str] = mapped_column(String(120), default="", nullable=False)
+    password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
+    role: Mapped[str] = mapped_column(String(16), default="analyst", nullable=False)
+    is_active: Mapped[bool] = mapped_column(default=True, nullable=False)
+    failed_login_attempts: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    locked_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_login_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
 class Project(TimestampMixin, Base):
     __tablename__ = "projects"
 

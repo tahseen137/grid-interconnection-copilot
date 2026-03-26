@@ -7,7 +7,7 @@ from typing import Generator
 from uuid import uuid4
 
 from fastapi import Depends, FastAPI, HTTPException, Request, Response, status
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, PlainTextResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
@@ -20,6 +20,7 @@ from app.auth import authenticate_session, clear_session, is_authenticated, logi
 from app.config import Settings, get_settings
 from app.db import DatabaseState, build_database_state, database_is_ready, init_database
 from app.models import Project, Site
+from app.portfolio_io import analysis_results_csv, build_project_export, parse_sites_csv, site_template_csv
 from app.reporting import compare_sites, generate_investment_memo
 from app.schemas import (
     AnalysisRunRead,
@@ -35,6 +36,8 @@ from app.schemas import (
     SessionLoginRequest,
     SessionStatusResponse,
     SiteAssessment,
+    SiteBulkImportRequest,
+    SiteBulkImportResponse,
     SiteCreate,
     SiteInput,
     SiteRead,
@@ -43,6 +46,7 @@ from app.schemas import (
 from app.scoring import REFERENCE_PROFILES, assess_site
 from app.services import (
     add_site_to_project,
+    add_sites_to_project,
     create_project,
     delete_project,
     delete_site,
@@ -242,6 +246,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     def list_region_reference() -> RegionReferenceResponse:
         return RegionReferenceResponse(regions=REFERENCE_PROFILES)
 
+    @app.get("/api/reference/site-template.csv", dependencies=[Depends(require_api_access)])
+    def download_site_template() -> PlainTextResponse:
+        return PlainTextResponse(
+            content=site_template_csv(),
+            media_type="text/csv; charset=utf-8",
+            headers={"Content-Disposition": 'attachment; filename="site-intake-template.csv"'},
+        )
+
     @app.get("/api/projects", response_model=list[ProjectSummary], dependencies=[Depends(require_api_access)])
     def list_saved_projects(session: Session = Depends(get_session)) -> list[ProjectSummary]:
         return [_project_summary(project) for project in list_projects(session)]
@@ -289,8 +301,48 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         project: Project = Depends(require_project),
         session: Session = Depends(get_session),
     ) -> SiteRead:
-        site = add_site_to_project(session, project, payload)
+        try:
+            site = add_site_to_project(session, project, payload)
+        except ValueError as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
         return SiteRead.model_validate(site)
+
+    @app.post(
+        "/api/projects/{project_id}/sites/import-csv",
+        response_model=SiteBulkImportResponse,
+        status_code=status.HTTP_201_CREATED,
+        dependencies=[Depends(require_api_access)],
+    )
+    def import_sites_endpoint(
+        payload: SiteBulkImportRequest,
+        project: Project = Depends(require_project),
+        session: Session = Depends(get_session),
+    ) -> SiteBulkImportResponse:
+        try:
+            parsed_sites, errors, skipped_blank_rows = parse_sites_csv(payload.csv_content)
+        except ValueError as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+        if errors:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail={"errors": errors, "skipped_blank_rows": skipped_blank_rows},
+            )
+        if not parsed_sites:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No valid site rows were found in the CSV upload")
+
+        try:
+            created_sites = add_sites_to_project(session, project, parsed_sites)
+        except ValueError as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+        return SiteBulkImportResponse(
+            created_count=len(created_sites),
+            skipped_blank_rows=skipped_blank_rows,
+            error_count=0,
+            errors=[],
+            sites=[SiteRead.model_validate(site) for site in created_sites],
+        )
 
     @app.patch(
         "/api/projects/{project_id}/sites/{site_id}",
@@ -302,7 +354,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         site: Site = Depends(require_site),
         session: Session = Depends(get_session),
     ) -> SiteRead:
-        updated = update_site(session, site, payload)
+        try:
+            updated = update_site(session, site, payload)
+        except ValueError as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
         return SiteRead.model_validate(updated)
 
     @app.delete(
@@ -344,6 +399,36 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         if analysis_run is None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No analysis has been run yet")
         return AnalysisRunRead.model_validate(analysis_run)
+
+    @app.get("/api/projects/{project_id}/export", dependencies=[Depends(require_api_access)])
+    def export_project_endpoint(project: Project = Depends(require_project)) -> dict[str, object]:
+        return build_project_export(project, _project_read(project))
+
+    @app.get("/api/projects/{project_id}/analysis/latest.csv", dependencies=[Depends(require_api_access)])
+    def export_latest_analysis_csv(project: Project = Depends(require_project)) -> PlainTextResponse:
+        analysis_run = latest_analysis(project)
+        if analysis_run is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No analysis has been run yet")
+
+        safe_slug = project.name.lower().replace(" ", "-")
+        return PlainTextResponse(
+            content=analysis_results_csv(analysis_run),
+            media_type="text/csv; charset=utf-8",
+            headers={"Content-Disposition": f'attachment; filename="{safe_slug}-rankings.csv"'},
+        )
+
+    @app.get("/api/projects/{project_id}/analysis/latest.md", dependencies=[Depends(require_api_access)])
+    def export_latest_analysis_memo(project: Project = Depends(require_project)) -> PlainTextResponse:
+        analysis_run = latest_analysis(project)
+        if analysis_run is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No analysis has been run yet")
+
+        safe_slug = project.name.lower().replace(" ", "-")
+        return PlainTextResponse(
+            content=analysis_run.memo_markdown,
+            media_type="text/markdown; charset=utf-8",
+            headers={"Content-Disposition": f'attachment; filename="{safe_slug}-memo.md"'},
+        )
 
     @app.post("/api/sites/score", response_model=SiteAssessment, dependencies=[Depends(require_api_access)])
     def score_site(payload: SiteInput) -> SiteAssessment:

@@ -20,12 +20,31 @@ const deleteProjectButton = document.querySelector("#delete-project");
 const refreshWorkspaceButton = document.querySelector("#refresh-workspace");
 const loadDemoButton = document.querySelector("#load-demo");
 const logoutButton = document.querySelector("#logout");
+const exportProjectButton = document.querySelector("#export-project");
+const downloadRankingsButton = document.querySelector("#download-rankings");
+const downloadMemoButton = document.querySelector("#download-memo");
+const downloadTemplateButton = document.querySelector("#download-template");
+const importSitesButton = document.querySelector("#import-sites");
+const siteImportFile = document.querySelector("#site-import-file");
 
 const state = {
   projectSummaries: [],
   selectedProject: null,
   regionProfiles: [],
 };
+
+function formatErrorDetail(detail) {
+  if (typeof detail === "string") {
+    return detail;
+  }
+  if (Array.isArray(detail)) {
+    return detail.join("; ");
+  }
+  if (detail && Array.isArray(detail.errors)) {
+    return detail.errors.join(" | ");
+  }
+  return "Request failed";
+}
 
 async function apiRequest(url, options = {}) {
   const response = await fetch(url, {
@@ -50,7 +69,7 @@ async function apiRequest(url, options = {}) {
 
   if (!response.ok) {
     const detail = typeof payload === "object" && payload !== null ? payload.detail || "Request failed" : payload;
-    throw new Error(detail);
+    throw new Error(formatErrorDetail(detail));
   }
 
   return payload;
@@ -102,6 +121,8 @@ function setSiteFormEnabled(enabled) {
   siteForm.querySelectorAll("input, select, textarea, button").forEach((field) => {
     field.disabled = !enabled;
   });
+  importSitesButton.disabled = !enabled;
+  siteImportFile.disabled = !enabled;
 }
 
 function renderSelectedProject() {
@@ -121,6 +142,9 @@ function renderSelectedProject() {
     memoOutput.textContent = "No analysis memo yet.";
     runAnalysisButton.disabled = true;
     deleteProjectButton.disabled = true;
+    exportProjectButton.disabled = true;
+    downloadRankingsButton.disabled = true;
+    downloadMemoButton.disabled = true;
     setSiteFormEnabled(false);
     return;
   }
@@ -137,6 +161,9 @@ function renderSelectedProject() {
   metricTopPick.textContent = latestAnalysis?.top_pick_site_name || "-";
   runAnalysisButton.disabled = project.sites.length === 0;
   deleteProjectButton.disabled = false;
+  exportProjectButton.disabled = false;
+  downloadRankingsButton.disabled = !latestAnalysis;
+  downloadMemoButton.disabled = !latestAnalysis;
   setSiteFormEnabled(true);
 
   if (!project.sites.length) {
@@ -443,6 +470,52 @@ if (logoutButton) {
     }
   });
 }
+
+exportProjectButton.addEventListener("click", () => {
+  if (!state.selectedProject) return;
+  window.location.assign(`/api/projects/${state.selectedProject.id}/export`);
+});
+
+downloadRankingsButton.addEventListener("click", () => {
+  if (!state.selectedProject) return;
+  window.location.assign(`/api/projects/${state.selectedProject.id}/analysis/latest.csv`);
+});
+
+downloadMemoButton.addEventListener("click", () => {
+  if (!state.selectedProject) return;
+  window.location.assign(`/api/projects/${state.selectedProject.id}/analysis/latest.md`);
+});
+
+downloadTemplateButton.addEventListener("click", () => {
+  window.location.assign("/api/reference/site-template.csv");
+});
+
+importSitesButton.addEventListener("click", async () => {
+  if (!state.selectedProject) {
+    setStatus("Select a project before importing sites.", "error");
+    return;
+  }
+
+  const file = siteImportFile.files[0];
+  if (!file) {
+    setStatus("Choose a CSV file before importing.", "error");
+    return;
+  }
+
+  try {
+    setStatus("Importing site pipeline...", "info");
+    const csvContent = await file.text();
+    const result = await apiRequest(`/api/projects/${state.selectedProject.id}/sites/import-csv`, {
+      method: "POST",
+      body: JSON.stringify({ csv_content: csvContent }),
+    });
+    siteImportFile.value = "";
+    await refreshProjects(state.selectedProject.id);
+    setStatus(`Imported ${result.created_count} site(s).`, "success");
+  } catch (error) {
+    setStatus(error.message, "error");
+  }
+});
 
 async function bootstrap() {
   try {

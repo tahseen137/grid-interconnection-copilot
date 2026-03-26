@@ -22,6 +22,7 @@ This MVP is designed for early-stage screening, not final engineering signoff. I
 - vanilla JavaScript + CSS dashboard
 - pytest for automated quality control
 - Docker + Render config for deployment
+- Docker entrypoint respects Render's `PORT` environment variable
 
 ## Run locally
 

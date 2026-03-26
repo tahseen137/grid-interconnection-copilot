@@ -36,6 +36,30 @@ class User(TimestampMixin, Base):
     locked_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     last_login_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
+    activity_events: Mapped[list["ActivityEvent"]] = relationship(back_populates="actor")
+
+
+class ActivityEvent(Base):
+    __tablename__ = "activity_events"
+    __table_args__ = (
+        Index("ix_activity_events_created_at", "created_at"),
+        Index("ix_activity_events_actor_user_id", "actor_user_id"),
+        Index("ix_activity_events_action", "action"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
+    actor_user_id: Mapped[str | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    actor_username: Mapped[str] = mapped_column(String(50), nullable=False, default="system")
+    action: Mapped[str] = mapped_column(String(64), nullable=False)
+    entity_type: Mapped[str] = mapped_column(String(32), nullable=False)
+    entity_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    project_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    description: Mapped[str] = mapped_column(Text, nullable=False)
+    details: Mapped[dict[str, object]] = mapped_column(JSON, default=dict, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_timestamp)
+
+    actor: Mapped[User | None] = relationship(back_populates="activity_events")
+
 
 class Project(TimestampMixin, Base):
     __tablename__ = "projects"

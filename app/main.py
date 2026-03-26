@@ -28,6 +28,7 @@ from app.auth import (
     sanitize_next_path,
     set_authenticated_user_session,
 )
+from app.activity_service import list_activity_events, record_activity
 from app.config import Settings, get_settings
 from app.db import DatabaseState, build_database_state, database_is_ready, init_database
 from app.models import Project, Site, User
@@ -35,6 +36,7 @@ from app.portfolio_io import analysis_results_csv, build_project_export, parse_s
 from app.reporting import compare_sites, generate_investment_memo
 from app.schemas import (
     AnalysisRunRead,
+    ActivityEventRead,
     ComparisonRequest,
     ComparisonResponse,
     CurrentUserResponse,
@@ -55,6 +57,9 @@ from app.schemas import (
     SiteInput,
     SiteRead,
     SiteUpdate,
+    UserCreateRequest,
+    UserRead,
+    UserUpdateRequest,
 )
 from app.scoring import REFERENCE_PROFILES, assess_site
 from app.services import (
@@ -72,7 +77,17 @@ from app.services import (
     update_project,
     update_site,
 )
-from app.user_service import authenticate_user, can_manage_users, can_write, ensure_bootstrap_admin, get_user_by_id, has_users
+from app.user_service import (
+    authenticate_user,
+    can_manage_users,
+    can_write,
+    create_user as create_workspace_user,
+    ensure_bootstrap_admin,
+    get_user_by_id,
+    has_users,
+    list_users as list_workspace_users,
+    update_user as update_workspace_user,
+)
 
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -258,6 +273,15 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Write access requires analyst or admin role")
         return user
 
+    def require_admin_access(
+        request: Request,
+        current_user: User | None = Depends(get_current_user),
+    ) -> User | None:
+        user = require_api_access(request, current_user)
+        if user is not None and not can_manage_users(user):
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admin access required")
+        return user
+
     def require_csrf_protection(
         request: Request,
         current_user: User | None = Depends(get_current_user),
@@ -338,9 +362,26 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         result = authenticate_user(session, payload.username, payload.password, request.app.state.settings)
         if result.user is None:
             clear_session(request)
+            record_activity(
+                session,
+                action="auth.login_failed",
+                entity_type="session",
+                entity_id=None,
+                actor_username=payload.username,
+                description=f"Failed login attempt for {payload.username}.",
+                details={"username": payload.username},
+            )
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=result.error or "Invalid credentials")
 
         set_authenticated_user_session(request, result.user)
+        record_activity(
+            session,
+            action="auth.login",
+            entity_type="session",
+            entity_id=result.user.id,
+            actor_user=result.user,
+            description=f"{result.user.username} signed in.",
+        )
         return _session_status(request, result.user, next_path)
 
     @app.post(
@@ -348,7 +389,20 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         response_model=SessionStatusResponse,
         dependencies=[Depends(require_api_access), Depends(require_csrf_protection)],
     )
-    def logout_session(request: Request) -> SessionStatusResponse:
+    def logout_session(
+        request: Request,
+        session: Session = Depends(get_session),
+        current_user: User | None = Depends(require_api_access),
+    ) -> SessionStatusResponse:
+        if current_user is not None:
+            record_activity(
+                session,
+                action="auth.logout",
+                entity_type="session",
+                entity_id=current_user.id,
+                actor_user=current_user,
+                description=f"{current_user.username} signed out.",
+            )
         clear_session(request)
         return SessionStatusResponse(
             auth_required=auth_required(request),
@@ -358,6 +412,91 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             current_user=None,
             permissions=PermissionSummary(can_write=False, can_manage_users=False),
         )
+
+    @app.get("/api/activity", response_model=list[ActivityEventRead], dependencies=[Depends(require_api_access)])
+    def list_activity_endpoint(session: Session = Depends(get_session)) -> list[ActivityEventRead]:
+        return [ActivityEventRead.model_validate(event) for event in list_activity_events(session)]
+
+    @app.get("/api/admin/users", response_model=list[UserRead], dependencies=[Depends(require_admin_access)])
+    def list_users_endpoint(session: Session = Depends(get_session)) -> list[UserRead]:
+        return [UserRead.model_validate(user) for user in list_workspace_users(session)]
+
+    @app.post(
+        "/api/admin/users",
+        response_model=UserRead,
+        status_code=status.HTTP_201_CREATED,
+        dependencies=[Depends(require_admin_access), Depends(require_csrf_protection)],
+    )
+    def create_user_endpoint(
+        payload: UserCreateRequest,
+        session: Session = Depends(get_session),
+        current_user: User | None = Depends(require_admin_access),
+    ) -> UserRead:
+        try:
+            user = create_workspace_user(
+                session,
+                username=payload.username,
+                password=payload.password,
+                role=payload.role,
+                full_name=payload.full_name,
+                is_active=payload.is_active,
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+        record_activity(
+            session,
+            action="user.created",
+            entity_type="user",
+            entity_id=user.id,
+            actor_user=current_user,
+            description=f"{current_user.username if current_user else 'admin'} created user {user.username}.",
+            details={"role": user.role, "is_active": user.is_active},
+        )
+        return UserRead.model_validate(user)
+
+    @app.patch(
+        "/api/admin/users/{user_id}",
+        response_model=UserRead,
+        dependencies=[Depends(require_admin_access), Depends(require_csrf_protection)],
+    )
+    def update_user_endpoint(
+        user_id: str,
+        payload: UserUpdateRequest,
+        session: Session = Depends(get_session),
+        current_user: User | None = Depends(require_admin_access),
+    ) -> UserRead:
+        user = get_user_by_id(session, user_id)
+        if user is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+
+        try:
+            updated = update_workspace_user(
+                session,
+                user,
+                full_name=payload.full_name,
+                role=payload.role,
+                is_active=payload.is_active,
+                password=payload.password,
+                acting_user=current_user,
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+        record_activity(
+            session,
+            action="user.updated",
+            entity_type="user",
+            entity_id=updated.id,
+            actor_user=current_user,
+            description=f"{current_user.username if current_user else 'admin'} updated user {updated.username}.",
+            details={
+                "role": updated.role,
+                "is_active": updated.is_active,
+                "password_reset": payload.password is not None,
+            },
+        )
+        return UserRead.model_validate(updated)
 
     @app.get("/api/reference/regions", response_model=RegionReferenceResponse, dependencies=[Depends(require_api_access)])
     def list_region_reference() -> RegionReferenceResponse:
@@ -381,9 +520,23 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         status_code=status.HTTP_201_CREATED,
         dependencies=[Depends(require_write_access), Depends(require_csrf_protection)],
     )
-    def create_project_endpoint(payload: ProjectCreate, session: Session = Depends(get_session)) -> ProjectRead:
+    def create_project_endpoint(
+        payload: ProjectCreate,
+        session: Session = Depends(get_session),
+        current_user: User | None = Depends(require_write_access),
+    ) -> ProjectRead:
         project = create_project(session, payload)
         project = get_project(session, project.id) or project
+        record_activity(
+            session,
+            action="project.created",
+            entity_type="project",
+            entity_id=project.id,
+            actor_user=current_user,
+            project_id=project.id,
+            description=f"{current_user.username if current_user else 'system'} created project {project.name}.",
+            details={"status": project.status, "technology_focus": project.technology_focus},
+        )
         return _project_read(project)
 
     @app.get("/api/projects/{project_id}", response_model=ProjectRead, dependencies=[Depends(require_api_access)])
@@ -399,9 +552,20 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         payload: ProjectUpdate,
         project: Project = Depends(require_project),
         session: Session = Depends(get_session),
+        current_user: User | None = Depends(require_write_access),
     ) -> ProjectRead:
         updated = update_project(session, project, payload)
         refreshed = get_project(session, updated.id) or updated
+        record_activity(
+            session,
+            action="project.updated",
+            entity_type="project",
+            entity_id=updated.id,
+            actor_user=current_user,
+            project_id=updated.id,
+            description=f"{current_user.username if current_user else 'system'} updated project {updated.name}.",
+            details=payload.model_dump(exclude_unset=True),
+        )
         return _project_read(refreshed)
 
     @app.delete(
@@ -412,8 +576,20 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     def delete_project_endpoint(
         project: Project = Depends(require_project),
         session: Session = Depends(get_session),
+        current_user: User | None = Depends(require_write_access),
     ) -> Response:
+        project_snapshot = {"project_id": project.id, "project_name": project.name}
         delete_project(session, project)
+        record_activity(
+            session,
+            action="project.deleted",
+            entity_type="project",
+            entity_id=project_snapshot["project_id"],
+            actor_user=current_user,
+            project_id=project_snapshot["project_id"],
+            description=f"{current_user.username if current_user else 'system'} deleted project {project_snapshot['project_name']}.",
+            details=project_snapshot,
+        )
         return Response(status_code=status.HTTP_204_NO_CONTENT)
 
     @app.get("/api/projects/{project_id}/sites", response_model=list[SiteRead], dependencies=[Depends(require_api_access)])
@@ -430,11 +606,22 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         payload: SiteCreate,
         project: Project = Depends(require_project),
         session: Session = Depends(get_session),
+        current_user: User | None = Depends(require_write_access),
     ) -> SiteRead:
         try:
             site = add_site_to_project(session, project, payload)
         except ValueError as exc:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+        record_activity(
+            session,
+            action="site.created",
+            entity_type="site",
+            entity_id=site.id,
+            actor_user=current_user,
+            project_id=project.id,
+            description=f"{current_user.username if current_user else 'system'} added site {site.name} to {project.name}.",
+            details={"region": site.region, "state": site.state, "technology": site.technology},
+        )
         return SiteRead.model_validate(site)
 
     @app.post(
@@ -447,6 +634,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         payload: SiteBulkImportRequest,
         project: Project = Depends(require_project),
         session: Session = Depends(get_session),
+        current_user: User | None = Depends(require_write_access),
     ) -> SiteBulkImportResponse:
         try:
             parsed_sites, errors, skipped_blank_rows = parse_sites_csv(payload.csv_content)
@@ -466,6 +654,17 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         except ValueError as exc:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 
+        record_activity(
+            session,
+            action="site.bulk_imported",
+            entity_type="project",
+            entity_id=project.id,
+            actor_user=current_user,
+            project_id=project.id,
+            description=f"{current_user.username if current_user else 'system'} imported {len(created_sites)} sites into {project.name}.",
+            details={"created_count": len(created_sites), "skipped_blank_rows": skipped_blank_rows},
+        )
+
         return SiteBulkImportResponse(
             created_count=len(created_sites),
             skipped_blank_rows=skipped_blank_rows,
@@ -483,11 +682,22 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         payload: SiteUpdate,
         site: Site = Depends(require_site),
         session: Session = Depends(get_session),
+        current_user: User | None = Depends(require_write_access),
     ) -> SiteRead:
         try:
             updated = update_site(session, site, payload)
         except ValueError as exc:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+        record_activity(
+            session,
+            action="site.updated",
+            entity_type="site",
+            entity_id=updated.id,
+            actor_user=current_user,
+            project_id=updated.project_id,
+            description=f"{current_user.username if current_user else 'system'} updated site {updated.name}.",
+            details=payload.model_dump(exclude_unset=True),
+        )
         return SiteRead.model_validate(updated)
 
     @app.delete(
@@ -498,8 +708,20 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     def delete_site_endpoint(
         site: Site = Depends(require_site),
         session: Session = Depends(get_session),
+        current_user: User | None = Depends(require_write_access),
     ) -> Response:
+        site_snapshot = {"site_id": site.id, "site_name": site.name, "project_id": site.project_id}
         delete_site(session, site)
+        record_activity(
+            session,
+            action="site.deleted",
+            entity_type="site",
+            entity_id=site_snapshot["site_id"],
+            actor_user=current_user,
+            project_id=site_snapshot["project_id"],
+            description=f"{current_user.username if current_user else 'system'} deleted site {site_snapshot['site_name']}.",
+            details=site_snapshot,
+        )
         return Response(status_code=status.HTTP_204_NO_CONTENT)
 
     @app.post(
@@ -511,13 +733,26 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     def run_analysis_endpoint(
         project: Project = Depends(require_project),
         session: Session = Depends(get_session),
+        current_user: User | None = Depends(require_write_access),
     ) -> AnalysisRunRead:
         if not project.sites:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Add at least one site before running analysis")
         analysis_run = run_project_analysis(session, project)
         refreshed = get_project(session, project.id)
         latest = latest_analysis(refreshed or project)
-        return AnalysisRunRead.model_validate(latest or analysis_run)
+        recorded_run = latest or analysis_run
+        if recorded_run is not None:
+            record_activity(
+                session,
+                action="analysis.created",
+                entity_type="analysis_run",
+                entity_id=recorded_run.id,
+                actor_user=current_user,
+                project_id=project.id,
+                description=f"{current_user.username if current_user else 'system'} ran analysis for {project.name}.",
+                details={"top_pick_site_name": recorded_run.top_pick_site_name},
+            )
+        return AnalysisRunRead.model_validate(recorded_run)
 
     @app.get(
         "/api/projects/{project_id}/analysis/latest",

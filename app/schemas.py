@@ -197,6 +197,28 @@ class CurrentUserResponse(BaseModel):
     last_login_at: datetime | None
 
 
+class UserRead(CurrentUserResponse):
+    created_at: datetime
+    updated_at: datetime
+    failed_login_attempts: int
+    locked_until: datetime | None
+
+
+class UserCreateRequest(BaseModel):
+    username: str = Field(..., min_length=3, max_length=50, pattern=r"^[a-zA-Z0-9._-]+$")
+    full_name: str = Field(default="", max_length=120)
+    role: UserRole = "analyst"
+    password: str = Field(..., min_length=8, max_length=200)
+    is_active: bool = True
+
+
+class UserUpdateRequest(BaseModel):
+    full_name: str | None = Field(default=None, max_length=120)
+    role: UserRole | None = None
+    password: str | None = Field(default=None, min_length=8, max_length=200)
+    is_active: bool | None = None
+
+
 class PermissionSummary(BaseModel):
     can_write: bool
     can_manage_users: bool
@@ -221,6 +243,21 @@ class SiteBulkImportResponse(BaseModel):
     error_count: int
     errors: list[str]
     sites: list[SiteRead]
+
+
+class ActivityEventRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str
+    actor_user_id: str | None
+    actor_username: str
+    action: str
+    entity_type: str
+    entity_id: str | None
+    project_id: str | None
+    description: str
+    details: dict[str, object]
+    created_at: datetime
 
 
 class ComparisonRequest(BaseModel):

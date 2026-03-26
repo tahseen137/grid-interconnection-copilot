@@ -34,3 +34,20 @@ def session(settings: Settings) -> Generator[Session, None, None]:
     finally:
         db_session.close()
         database.engine.dispose()
+
+
+@pytest.fixture
+def auth_settings(tmp_path) -> Settings:
+    return Settings(
+        app_env="test",
+        database_url=f"sqlite:///{(tmp_path / 'grid-auth-test.db').resolve()}",
+        app_access_password="pilot-password",
+        session_secret="test-session-secret",
+    )
+
+
+@pytest.fixture
+def auth_client(auth_settings: Settings) -> Generator[TestClient, None, None]:
+    app = create_app(auth_settings)
+    with TestClient(app) as test_client:
+        yield test_client

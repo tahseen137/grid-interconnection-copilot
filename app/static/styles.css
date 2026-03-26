@@ -26,6 +26,13 @@ body {
     linear-gradient(180deg, #071013 0%, #0b181b 100%);
 }
 
+h1,
+h2,
+h3,
+p {
+  margin-top: 0;
+}
+
 button,
 input,
 select,
@@ -73,6 +80,20 @@ button:disabled {
   width: min(1400px, calc(100vw - 32px));
   margin: 0 auto;
   padding: 28px 0 48px;
+}
+
+.login-shell {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+}
+
+.login-card {
+  width: min(520px, 100%);
+  padding: 28px;
+  display: grid;
+  gap: 18px;
 }
 
 .panel {

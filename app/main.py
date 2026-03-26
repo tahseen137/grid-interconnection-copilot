@@ -2,14 +2,21 @@ from __future__ import annotations
 
 from contextlib import asynccontextmanager
 from pathlib import Path
+from time import perf_counter
 from typing import Generator
+from uuid import uuid4
 
 from fastapi import Depends, FastAPI, HTTPException, Request, Response, status
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
+from starlette.middleware.gzip import GZipMiddleware
+from starlette.middleware.httpsredirect import HTTPSRedirectMiddleware
+from starlette.middleware.sessions import SessionMiddleware
+from starlette.middleware.trustedhost import TrustedHostMiddleware
 
+from app.auth import authenticate_session, clear_session, is_authenticated, login_redirect, require_api_access, sanitize_next_path
 from app.config import Settings, get_settings
 from app.db import DatabaseState, build_database_state, database_is_ready, init_database
 from app.models import Project, Site
@@ -25,6 +32,8 @@ from app.schemas import (
     ProjectSummary,
     ProjectUpdate,
     RegionReferenceResponse,
+    SessionLoginRequest,
+    SessionStatusResponse,
     SiteAssessment,
     SiteCreate,
     SiteInput,
@@ -100,6 +109,52 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         version="0.2.0",
         lifespan=lifespan,
     )
+
+    if resolved_settings.enable_gzip:
+        app.add_middleware(GZipMiddleware, minimum_size=500)
+    if resolved_settings.auth_enabled:
+        app.add_middleware(
+            SessionMiddleware,
+            secret_key=resolved_settings.session_secret or "",
+            session_cookie="gridcopilot_session",
+            same_site="lax",
+            https_only=resolved_settings.session_https_only,
+            max_age=resolved_settings.session_max_age_seconds,
+        )
+    if resolved_settings.allowed_hosts != ["*"]:
+        app.add_middleware(TrustedHostMiddleware, allowed_hosts=resolved_settings.allowed_hosts)
+    if resolved_settings.enforce_https:
+        app.add_middleware(HTTPSRedirectMiddleware)
+
+    @app.middleware("http")
+    async def add_response_headers(request: Request, call_next):
+        request_id = uuid4().hex
+        started_at = perf_counter()
+        response = await call_next(request)
+        duration_ms = (perf_counter() - started_at) * 1000
+
+        response.headers["X-Request-ID"] = request_id
+        response.headers["X-Process-Time-Ms"] = f"{duration_ms:.2f}"
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        response.headers["X-Frame-Options"] = "DENY"
+        response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+        response.headers["Permissions-Policy"] = "geolocation=(), microphone=(), camera=()"
+        response.headers["Content-Security-Policy"] = (
+            "default-src 'self'; "
+            "script-src 'self'; "
+            "style-src 'self' https://fonts.googleapis.com; "
+            "font-src 'self' https://fonts.gstatic.com; "
+            "img-src 'self' data:; "
+            "connect-src 'self'; "
+            "form-action 'self'; "
+            "base-uri 'self'; "
+            "frame-ancestors 'none'"
+        )
+        if request.url.path in {"/", "/login"}:
+            response.headers["Cache-Control"] = "no-store"
+
+        return response
+
     app.mount("/static", StaticFiles(directory=str(BASE_DIR / "static")), name="static")
 
     def get_database_state(request: Request) -> DatabaseState:
@@ -134,30 +189,74 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Database unavailable")
         return {"status": "ready"}
 
-    @app.get("/", response_class=HTMLResponse)
-    def index(request: Request) -> HTMLResponse:
-        template = templates.get_template("index.html")
-        return HTMLResponse(template.render(request=request))
+    @app.get("/login", response_class=HTMLResponse)
+    def login_page(request: Request) -> Response:
+        if not request.app.state.settings.auth_enabled:
+            return RedirectResponse(url="/", status_code=status.HTTP_303_SEE_OTHER)
+        if is_authenticated(request):
+            next_path = sanitize_next_path(request.query_params.get("next"))
+            return RedirectResponse(url=next_path, status_code=status.HTTP_303_SEE_OTHER)
 
-    @app.get("/api/reference/regions", response_model=RegionReferenceResponse)
+        template = templates.get_template("login.html")
+        return HTMLResponse(
+            template.render(
+                request=request,
+                next_path=sanitize_next_path(request.query_params.get("next")),
+            )
+        )
+
+    @app.get("/", response_class=HTMLResponse)
+    def index(request: Request) -> Response:
+        if not is_authenticated(request):
+            return RedirectResponse(url=login_redirect("/"), status_code=status.HTTP_303_SEE_OTHER)
+        template = templates.get_template("index.html")
+        return HTMLResponse(
+            template.render(
+                request=request,
+                auth_enabled=request.app.state.settings.auth_enabled,
+            )
+        )
+
+    @app.get("/api/session", response_model=SessionStatusResponse)
+    def session_status(request: Request) -> SessionStatusResponse:
+        return SessionStatusResponse(
+            auth_enabled=request.app.state.settings.auth_enabled,
+            authenticated=is_authenticated(request),
+            next_path="/",
+        )
+
+    @app.post("/api/session/login", response_model=SessionStatusResponse)
+    def login_session(payload: SessionLoginRequest, request: Request) -> SessionStatusResponse:
+        next_path = sanitize_next_path(payload.next_path)
+        if not authenticate_session(request, payload.password):
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid password")
+        return SessionStatusResponse(auth_enabled=True, authenticated=True, next_path=next_path)
+
+    @app.post("/api/session/logout", response_model=SessionStatusResponse)
+    def logout_session(request: Request) -> SessionStatusResponse:
+        auth_enabled = request.app.state.settings.auth_enabled
+        clear_session(request)
+        return SessionStatusResponse(auth_enabled=auth_enabled, authenticated=not auth_enabled, next_path="/login")
+
+    @app.get("/api/reference/regions", response_model=RegionReferenceResponse, dependencies=[Depends(require_api_access)])
     def list_region_reference() -> RegionReferenceResponse:
         return RegionReferenceResponse(regions=REFERENCE_PROFILES)
 
-    @app.get("/api/projects", response_model=list[ProjectSummary])
+    @app.get("/api/projects", response_model=list[ProjectSummary], dependencies=[Depends(require_api_access)])
     def list_saved_projects(session: Session = Depends(get_session)) -> list[ProjectSummary]:
         return [_project_summary(project) for project in list_projects(session)]
 
-    @app.post("/api/projects", response_model=ProjectRead, status_code=status.HTTP_201_CREATED)
+    @app.post("/api/projects", response_model=ProjectRead, status_code=status.HTTP_201_CREATED, dependencies=[Depends(require_api_access)])
     def create_project_endpoint(payload: ProjectCreate, session: Session = Depends(get_session)) -> ProjectRead:
         project = create_project(session, payload)
         project = get_project(session, project.id) or project
         return _project_read(project)
 
-    @app.get("/api/projects/{project_id}", response_model=ProjectRead)
+    @app.get("/api/projects/{project_id}", response_model=ProjectRead, dependencies=[Depends(require_api_access)])
     def get_project_endpoint(project: Project = Depends(require_project)) -> ProjectRead:
         return _project_read(project)
 
-    @app.patch("/api/projects/{project_id}", response_model=ProjectRead)
+    @app.patch("/api/projects/{project_id}", response_model=ProjectRead, dependencies=[Depends(require_api_access)])
     def update_project_endpoint(
         payload: ProjectUpdate,
         project: Project = Depends(require_project),
@@ -167,7 +266,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         refreshed = get_project(session, updated.id) or updated
         return _project_read(refreshed)
 
-    @app.delete("/api/projects/{project_id}", status_code=status.HTTP_204_NO_CONTENT)
+    @app.delete("/api/projects/{project_id}", status_code=status.HTTP_204_NO_CONTENT, dependencies=[Depends(require_api_access)])
     def delete_project_endpoint(
         project: Project = Depends(require_project),
         session: Session = Depends(get_session),
@@ -175,11 +274,16 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         delete_project(session, project)
         return Response(status_code=status.HTTP_204_NO_CONTENT)
 
-    @app.get("/api/projects/{project_id}/sites", response_model=list[SiteRead])
+    @app.get("/api/projects/{project_id}/sites", response_model=list[SiteRead], dependencies=[Depends(require_api_access)])
     def list_sites_endpoint(project: Project = Depends(require_project)) -> list[SiteRead]:
         return [SiteRead.model_validate(site) for site in list_project_sites(project)]
 
-    @app.post("/api/projects/{project_id}/sites", response_model=SiteRead, status_code=status.HTTP_201_CREATED)
+    @app.post(
+        "/api/projects/{project_id}/sites",
+        response_model=SiteRead,
+        status_code=status.HTTP_201_CREATED,
+        dependencies=[Depends(require_api_access)],
+    )
     def add_site_endpoint(
         payload: SiteCreate,
         project: Project = Depends(require_project),
@@ -188,7 +292,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         site = add_site_to_project(session, project, payload)
         return SiteRead.model_validate(site)
 
-    @app.patch("/api/projects/{project_id}/sites/{site_id}", response_model=SiteRead)
+    @app.patch(
+        "/api/projects/{project_id}/sites/{site_id}",
+        response_model=SiteRead,
+        dependencies=[Depends(require_api_access)],
+    )
     def update_site_endpoint(
         payload: SiteUpdate,
         site: Site = Depends(require_site),
@@ -197,7 +305,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         updated = update_site(session, site, payload)
         return SiteRead.model_validate(updated)
 
-    @app.delete("/api/projects/{project_id}/sites/{site_id}", status_code=status.HTTP_204_NO_CONTENT)
+    @app.delete(
+        "/api/projects/{project_id}/sites/{site_id}",
+        status_code=status.HTTP_204_NO_CONTENT,
+        dependencies=[Depends(require_api_access)],
+    )
     def delete_site_endpoint(
         site: Site = Depends(require_site),
         session: Session = Depends(get_session),
@@ -205,7 +317,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         delete_site(session, site)
         return Response(status_code=status.HTTP_204_NO_CONTENT)
 
-    @app.post("/api/projects/{project_id}/analysis", response_model=AnalysisRunRead, status_code=status.HTTP_201_CREATED)
+    @app.post(
+        "/api/projects/{project_id}/analysis",
+        response_model=AnalysisRunRead,
+        status_code=status.HTTP_201_CREATED,
+        dependencies=[Depends(require_api_access)],
+    )
     def run_analysis_endpoint(
         project: Project = Depends(require_project),
         session: Session = Depends(get_session),
@@ -217,22 +334,26 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         latest = latest_analysis(refreshed or project)
         return AnalysisRunRead.model_validate(latest or analysis_run)
 
-    @app.get("/api/projects/{project_id}/analysis/latest", response_model=AnalysisRunRead)
+    @app.get(
+        "/api/projects/{project_id}/analysis/latest",
+        response_model=AnalysisRunRead,
+        dependencies=[Depends(require_api_access)],
+    )
     def latest_analysis_endpoint(project: Project = Depends(require_project)) -> AnalysisRunRead:
         analysis_run = latest_analysis(project)
         if analysis_run is None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No analysis has been run yet")
         return AnalysisRunRead.model_validate(analysis_run)
 
-    @app.post("/api/sites/score", response_model=SiteAssessment)
+    @app.post("/api/sites/score", response_model=SiteAssessment, dependencies=[Depends(require_api_access)])
     def score_site(payload: SiteInput) -> SiteAssessment:
         return assess_site(payload)
 
-    @app.post("/api/sites/compare", response_model=ComparisonResponse)
+    @app.post("/api/sites/compare", response_model=ComparisonResponse, dependencies=[Depends(require_api_access)])
     def compare_site_options(payload: ComparisonRequest) -> ComparisonResponse:
         return compare_sites(payload)
 
-    @app.post("/api/reports/interconnection-memo", response_model=InvestmentMemoResponse)
+    @app.post("/api/reports/interconnection-memo", response_model=InvestmentMemoResponse, dependencies=[Depends(require_api_access)])
     def create_investment_memo(payload: InvestmentMemoRequest) -> InvestmentMemoResponse:
         return generate_investment_memo(payload)
 

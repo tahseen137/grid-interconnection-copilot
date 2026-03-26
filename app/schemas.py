@@ -179,6 +179,17 @@ class ProjectRead(BaseModel):
     analysis_runs: list[AnalysisRunRead]
 
 
+class SessionLoginRequest(BaseModel):
+    password: str = Field(..., min_length=1, max_length=200)
+    next_path: str = Field(default="/", max_length=500)
+
+
+class SessionStatusResponse(BaseModel):
+    auth_enabled: bool
+    authenticated: bool
+    next_path: str | None = None
+
+
 class ComparisonRequest(BaseModel):
     portfolio_name: str = Field(..., min_length=3, max_length=120)
     sites: list[SiteInput] = Field(..., min_length=2, max_length=10)

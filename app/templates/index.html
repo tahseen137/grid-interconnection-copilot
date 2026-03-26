@@ -26,6 +26,9 @@
         <div class="hero-actions">
           <button id="load-demo" class="ghost">Load demo project</button>
           <button id="refresh-workspace" class="primary">Refresh workspace</button>
+          {% if auth_enabled %}
+          <button id="logout" class="ghost danger">Log out</button>
+          {% endif %}
           <div class="hero-status">
             <span class="pill">Render live</span>
             <span class="muted-text">Saved projects and analysis runs are now persistent.</span>

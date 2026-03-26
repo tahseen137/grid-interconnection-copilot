@@ -18,6 +18,15 @@ def test_build_database_state_supports_non_sqlite_urls() -> None:
     database.engine.dispose()
 
 
+def test_settings_normalize_render_postgres_urls() -> None:
+    settings = Settings(
+        app_env="test",
+        database_url="postgresql://user:pass@localhost/testdb",
+    )
+
+    assert settings.resolved_database_url == "postgresql+psycopg://user:pass@localhost/testdb"
+
+
 def test_init_database_can_skip_schema_creation(tmp_path) -> None:
     settings = Settings(
         app_env="test",

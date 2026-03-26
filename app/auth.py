@@ -3,10 +3,20 @@ from __future__ import annotations
 from secrets import compare_digest
 from urllib.parse import quote
 
-from fastapi import HTTPException, Request, status
+from fastapi import Request
+
+from app.models import User
+from app.security import generate_csrf_token
 
 
-SESSION_AUTH_KEY = "authenticated"
+SESSION_USER_ID_KEY = "user_id"
+SESSION_USERNAME_KEY = "username"
+SESSION_ROLE_KEY = "role"
+SESSION_CSRF_KEY = "csrf_token"
+
+
+def _has_session(request: Request) -> bool:
+    return "session" in request.scope
 
 
 def sanitize_next_path(next_path: str | None) -> str:
@@ -15,36 +25,67 @@ def sanitize_next_path(next_path: str | None) -> str:
     return next_path
 
 
-def is_authenticated(request: Request) -> bool:
-    settings = request.app.state.settings
-    if not settings.auth_enabled:
-        return True
-    return bool(request.session.get(SESSION_AUTH_KEY))
-
-
-def require_api_access(request: Request) -> None:
-    if is_authenticated(request):
-        return
-    raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Authentication required")
-
-
 def login_redirect(next_path: str | None = "/") -> str:
     return f"/login?next={quote(sanitize_next_path(next_path), safe='')}"
 
 
-def authenticate_session(request: Request, password: str) -> bool:
-    settings = request.app.state.settings
-    if not settings.auth_enabled:
-        return True
+def auth_required(request: Request) -> bool:
+    return bool(getattr(request.app.state, "auth_required", False))
 
-    if compare_digest(password, settings.app_access_password or ""):
-        request.session[SESSION_AUTH_KEY] = True
-        return True
 
+def current_session_user_id(request: Request) -> str | None:
+    if not _has_session(request):
+        return None
+    value = request.session.get(SESSION_USER_ID_KEY)
+    return value if isinstance(value, str) and value else None
+
+
+def current_csrf_token(request: Request) -> str | None:
+    if not _has_session(request):
+        return None
+    value = request.session.get(SESSION_CSRF_KEY)
+    return value if isinstance(value, str) and value else None
+
+
+def ensure_csrf_token(request: Request) -> str:
+    if not _has_session(request):
+        return ""
+    token = current_csrf_token(request)
+    if token:
+        return token
+    token = generate_csrf_token()
+    request.session[SESSION_CSRF_KEY] = token
+    return token
+
+
+def csrf_token_matches(request: Request, candidate: str | None) -> bool:
+    expected = current_csrf_token(request)
+    if not expected or not candidate:
+        return False
+    return compare_digest(expected, candidate)
+
+
+def is_authenticated(request: Request, current_user: User | None = None) -> bool:
+    if not auth_required(request):
+        return True
+    return current_user is not None and current_session_user_id(request) == current_user.id
+
+
+def set_authenticated_user_session(request: Request, user: User) -> str:
     request.session.clear()
-    return False
+    request.session[SESSION_USER_ID_KEY] = user.id
+    request.session[SESSION_USERNAME_KEY] = user.username
+    request.session[SESSION_ROLE_KEY] = user.role
+    return ensure_csrf_token(request)
+
+
+def refresh_session_from_user(request: Request, user: User) -> str:
+    request.session[SESSION_USER_ID_KEY] = user.id
+    request.session[SESSION_USERNAME_KEY] = user.username
+    request.session[SESSION_ROLE_KEY] = user.role
+    return ensure_csrf_token(request)
 
 
 def clear_session(request: Request) -> None:
-    if hasattr(request, "session"):
+    if _has_session(request):
         request.session.clear()

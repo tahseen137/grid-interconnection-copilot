@@ -1,4 +1,5 @@
 const loginForm = document.querySelector("#login-form");
+const usernameField = document.querySelector("#username");
 const passwordField = document.querySelector("#password");
 const statusBanner = document.querySelector("#login-status");
 const nextPathField = document.querySelector("#next-path");
@@ -19,6 +20,7 @@ loginForm.addEventListener("submit", async (event) => {
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
+        username: usernameField.value,
         password: passwordField.value,
         next_path: nextPathField.value || "/",
       }),
@@ -32,6 +34,6 @@ loginForm.addEventListener("submit", async (event) => {
     window.location.assign(payload.next_path || "/");
   } catch (error) {
     setStatus(error.message, "error");
-    passwordField.select();
+    usernameField.select();
   }
 });

@@ -19,20 +19,24 @@
           <p class="eyebrow">Secure Workspace</p>
           <h1>Grid Interconnection Copilot</h1>
           <p class="muted-text">
-            Sign in with the workspace password to review portfolios, save analyses, and export investor-ready output.
+            Sign in with your workspace account to review portfolios, save analyses, and export investor-ready output.
           </p>
         </div>
 
         <form id="login-form" class="stack">
           <input id="next-path" type="hidden" value="{{ next_path }}" />
           <label>
-            Workspace password
+            Username
+            <input id="username" type="text" autocomplete="username" required />
+          </label>
+          <label>
+            Password
             <input id="password" type="password" autocomplete="current-password" required />
           </label>
           <button type="submit" class="primary full-width">Sign in</button>
         </form>
 
-        <div id="login-status" class="status-banner muted-text">Enter the shared pilot password to continue.</div>
+        <div id="login-status" class="status-banner muted-text">Enter your workspace credentials to continue.</div>
       </section>
     </main>
 

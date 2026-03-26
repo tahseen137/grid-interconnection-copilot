@@ -1,10 +1,5 @@
 from fastapi.testclient import TestClient
 
-from app.main import app
-
-
-client = TestClient(app)
-
 
 def _site_payload(name: str, region: str, wait_months: int, upgrade_cost: float) -> dict[str, object]:
     return {
@@ -25,7 +20,7 @@ def _site_payload(name: str, region: str, wait_months: int, upgrade_cost: float)
     }
 
 
-def test_compare_endpoint_ranks_sites_and_marks_top_pick() -> None:
+def test_compare_endpoint_ranks_sites_and_marks_top_pick(client: TestClient) -> None:
     response = client.post(
         "/api/sites/compare",
         json={
@@ -44,7 +39,7 @@ def test_compare_endpoint_ranks_sites_and_marks_top_pick() -> None:
     assert body["rankings"][1]["rank"] == 2
 
 
-def test_memo_endpoint_returns_markdown_and_priorities() -> None:
+def test_memo_endpoint_returns_markdown_and_priorities(client: TestClient) -> None:
     response = client.post(
         "/api/reports/interconnection-memo",
         json={
